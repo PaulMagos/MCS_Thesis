@@ -8,7 +8,8 @@ import time
 from tqdm import tqdm
 import torch.optim as optim
 
-device = 'cuda' if torch.cuda.is_available() else 'mps' if torch.backends.mps.is_available() else 'cpu'
+# device = 'cuda' if torch.cuda.is_available() else 'mps' if torch.backends.mps.is_available() else 'cpu'
+device = 'cpu'
 torch.set_default_device(device)
 
 # Model Parameters
@@ -24,8 +25,8 @@ EEGTrain, EEGValidation, EEGTest = get_dateset('EEG')
 EnergyTrain, EnergyValidation, EnergyTest = get_dateset('Energy')
 
 
-train_data = torch.Tensor(EEGTrain)
-validation_data = torch.Tensor(EEGValidation)
+train_data = torch.Tensor(EnergyTrain)
+validation_data = torch.Tensor(EnergyValidation)
 
 input_size = train_data.shape[-1]
 output_size = input_size
@@ -43,14 +44,18 @@ print(model)
 print("Starting training...")
 for epoch in range(1, 100 + 1):
     losses_epoch = []
-    for i in range(len(train_data) - 1):
-        optimizer.zero_grad()
-        outputs = model(train_data[i:i+1, :].to(device))
-        loss = criterion(train_data[i+1, :].to(device), outputs)
-        loss.backward()
-        # torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1)
-        optimizer.step()
-        losses_epoch.append(loss.item())
+    with tqdm(total=len(train_data) - 1) as pbar:
+        for i in range(len(train_data) - 1):
+            optimizer.zero_grad()
+            outputs = model(train_data[i:i+1, :].to(device))
+            loss = criterion(train_data[i+1, :].to(device), outputs)
+            loss.backward()
+            # torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1)
+            optimizer.step()
+            losses_epoch.append(loss.item())
+            if i%200 == 0:
+                pbar.set_description("Loss %s" % loss.item())
+            pbar.update(1)
     mean_loss = np.mean(losses_epoch)
     print(f'Epoch {epoch} - loss:', mean_loss)
     

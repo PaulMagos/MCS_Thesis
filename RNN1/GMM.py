@@ -5,7 +5,8 @@ import numpy as np
 
 __all__= ['GMM', 'gmm_loss']
 
-device = 'cuda' if torch.cuda.is_available() else 'mps' if torch.backends.mps.is_available() else 'cpu'
+# device = 'cuda' if torch.cuda.is_available() else 'mps' if torch.backends.mps.is_available() else 'cpu'
+device = 'cpu'
 torch.set_default_device(device)
  
 class GMM(nn.Module):
