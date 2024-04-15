@@ -7,6 +7,12 @@ import torch
 import time
 from tqdm import tqdm
 import torch.optim as optim
+import wandb
+from EarlyStopping import EarlyStopping
+
+wandb.init()
+
+# Magic
 
 device = 'cuda' if torch.cuda.is_available() else 'mps' if torch.backends.mps.is_available() else 'cpu'
 # device = 'cpu'
@@ -35,11 +41,14 @@ num_time_steps = len(train_data)
 args = (input_size, output_size, hidden_size, mixture_dim, dropout, num_layers, bidirectional, device, debug)
 model = GTC(*args)
 
+wandb.watch(model, log_freq=100)
 criterion = gmm_loss
 optimizer = optim.RMSprop(model.parameters(), lr=lr)
+es = EarlyStopping(patientce = 10, min_delta=1e-2)
 
 print(model)
 
+model.train()
 # Training loop
 print("Starting training...")
 for epoch in range(1, 5 + 1):
@@ -56,10 +65,16 @@ for epoch in range(1, 5 + 1):
             if i%200 == 0:
                 mean_loss = np.mean(losses_epoch)
                 pbar.set_description("Loss %s" % mean_loss)
+                wandb.log({"loss": mean_loss})
             pbar.update(1)
+            
     mean_loss = np.mean(losses_epoch)
     print(f'Epoch {epoch} - loss:', mean_loss)
+    if es(mean_loss):
+        print(f'Early Stopped at epoch {epoch} with loss {mean_loss}')
+        break
     
+model.eval()
 start = time.time()
 losses_epoch = []
 with tqdm(total=100) as p:
