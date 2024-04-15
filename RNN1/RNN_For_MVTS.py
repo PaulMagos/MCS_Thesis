@@ -8,13 +8,13 @@ import time
 from tqdm import tqdm
 import torch.optim as optim
 
-# device = 'cuda' if torch.cuda.is_available() else 'mps' if torch.backends.mps.is_available() else 'cpu'
-device = 'cpu'
+device = 'cuda' if torch.cuda.is_available() else 'mps' if torch.backends.mps.is_available() else 'cpu'
+# device = 'cpu'
 torch.set_default_device(device)
 
 # Model Parameters
-hidden_size = 100
-num_layers = 4
+hidden_size = 200
+num_layers = 5
 lr = 0.001
 dropout = 0.2
 bidirectional = True
@@ -22,11 +22,11 @@ mixture_dim = 10
 debug = False
 
 EEGTrain, EEGValidation, EEGTest = get_dateset('EEG')
-EnergyTrain, EnergyValidation, EnergyTest = get_dateset('Energy')
+# EnergyTrain, EnergyValidation, EnergyTest = get_dateset('Energy')
 
 
-train_data = torch.Tensor(EnergyTrain)
-validation_data = torch.Tensor(EnergyValidation)
+train_data = torch.Tensor(EEGTrain)
+validation_data = torch.Tensor(EEGValidation)
 
 input_size = train_data.shape[-1]
 output_size = input_size
@@ -42,7 +42,7 @@ print(model)
 
 # Training loop
 print("Starting training...")
-for epoch in range(1, 100 + 1):
+for epoch in range(1, 5 + 1):
     losses_epoch = []
     with tqdm(total=len(train_data) - 1) as pbar:
         for i in range(len(train_data) - 1):
@@ -54,7 +54,8 @@ for epoch in range(1, 100 + 1):
             optimizer.step()
             losses_epoch.append(loss.item())
             if i%200 == 0:
-                pbar.set_description("Loss %s" % loss.item())
+                mean_loss = np.mean(losses_epoch)
+                pbar.set_description("Loss %s" % mean_loss)
             pbar.update(1)
     mean_loss = np.mean(losses_epoch)
     print(f'Epoch {epoch} - loss:', mean_loss)
@@ -70,3 +71,5 @@ with tqdm(total=100) as p:
 print(f'Took {time.time()-start} on {device}')
 mean_loss = np.mean(losses_epoch)
 print('- loss:', mean_loss)
+
+torch.save(model.state_dict(), './model')

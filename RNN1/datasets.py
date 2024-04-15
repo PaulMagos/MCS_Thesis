@@ -9,7 +9,6 @@ from sklearn.preprocessing import MinMaxScaler
 __all__ = ['get_dataset']
 
 base_path = f'{os.path.dirname(__file__)}/'
-scaler = MinMaxScaler(feature_range=(0,1))
 
 def get_Energy():
     if not os.path.exists(f'{base_path}/data/Energy/train.pkl'):
@@ -61,7 +60,7 @@ def get_dateset(name='EEG'):
     print_lower_line()
     print(f'Original Dataset: \t{len(test)+len(train)+len(val)}\nTrain Split: \t\t{len(train)} \t(70%)\nValidation Split: \t{len(val)} \t(20%)\nTest Split: \t\t{len(test)} \t(10%)')
     print_upper_line()
-    
+    scaler = MinMaxScaler(feature_range=(0,1))
     train = scaler.fit_transform(np.array(train[train.columns[1:]]))
     val = scaler.fit_transform(np.array(val[val.columns[1:]]))
     test = scaler.fit_transform(np.array(test[test.columns[1:]]))
