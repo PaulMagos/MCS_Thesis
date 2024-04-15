@@ -19,12 +19,12 @@ device = 'cuda' if torch.cuda.is_available() else 'mps' if torch.backends.mps.is
 torch.set_default_device(device)
 
 # Model Parameters
-hidden_size = 200
+hidden_size = 100
 num_layers = 5
 lr = 0.001
 dropout = 0.2
 bidirectional = True
-mixture_dim = 10
+mixture_dim = 20
 debug = False
 
 EEGTrain, EEGValidation, EEGTest = get_dateset('EEG')
@@ -44,7 +44,7 @@ model = GTC(*args)
 wandb.watch(model, log_freq=100)
 criterion = gmm_loss
 optimizer = optim.RMSprop(model.parameters(), lr=lr)
-es = EarlyStopping(patientce = 10, min_delta=1e-2)
+es = EarlyStopping(patience = 10, min_delta=1e-2)
 
 print(model)
 
