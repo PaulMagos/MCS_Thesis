@@ -1,3 +1,3 @@
 from .GMM import *
-from .GTC import *
+from .GT import *
 from .EarlyStopping import *

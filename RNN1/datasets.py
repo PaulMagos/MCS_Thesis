@@ -6,9 +6,12 @@ import numpy as np
 from scipy.io import arff
 from sklearn.preprocessing import MinMaxScaler
 
-__all__ = ['get_dataset']
+__all__ = ['get_dataset', 'inverse_transform']
 
 base_path = f'{os.path.dirname(__file__)}/'
+
+energy_scaler = MinMaxScaler(feature_range=(0,1))
+eeg_scaler = MinMaxScaler(feature_range=(0,1))
 
 def get_Energy():
     if not os.path.exists(f'{base_path}/data/Energy/train.pkl'):
@@ -27,6 +30,9 @@ def get_Energy():
         EnergyValidation = pickle.load(open(f'{base_path}/data/Energy/validation.pkl', 'rb'))
         EnergyTest = pickle.load(open(f'{base_path}/data/Energy/test.pkl', 'rb'))
         
+    EnergyTrain = energy_scaler.fit_transform(np.array(EnergyTrain[EnergyTrain.columns[1:]]))
+    EnergyValidation = energy_scaler.fit_transform(np.array(EnergyValidation[EnergyValidation.columns[1:]]))
+    EnergyTest = energy_scaler.fit_transform(np.array(EnergyTest[EnergyTest.columns[1:]]))
     return EnergyTrain, EnergyValidation, EnergyTest
     
 def print_upper_line():
@@ -51,6 +57,11 @@ def get_EEG():
         EEGTrain = pickle.load(open(f'{base_path}/data/EEG/train.pkl', 'rb'))
         EEGValidation = pickle.load(open(f'{base_path}/data/EEG/validation.pkl', 'rb'))
         EEGTest = pickle.load(open(f'{base_path}/data/EEG/test.pkl', 'rb'))
+    
+    EEGTrain = eeg_scaler.fit_transform(np.array(EEGTrain[EEGTrain.columns[1:]]))
+    EEGValidation = eeg_scaler.fit_transform(np.array(EEGValidation[EEGValidation.columns[1:]]))
+    EEGTest = eeg_scaler.fit_transform(np.array(EEGTest[EEGTest.columns[1:]]))
+    
     return EEGTrain, EEGValidation, EEGTest
     
     
@@ -60,8 +71,10 @@ def get_dateset(name='EEG'):
     print_lower_line()
     print(f'Original Dataset: \t{len(test)+len(train)+len(val)}\nTrain Split: \t\t{len(train)} \t(70%)\nValidation Split: \t{len(val)} \t(20%)\nTest Split: \t\t{len(test)} \t(10%)')
     print_upper_line()
-    scaler = MinMaxScaler(feature_range=(0,1))
-    train = scaler.fit_transform(np.array(train[train.columns[1:]]))
-    val = scaler.fit_transform(np.array(val[val.columns[1:]]))
-    test = scaler.fit_transform(np.array(test[test.columns[1:]]))
     return train, val, test
+
+def inverse_transform(data, name='EEG'):
+    if name == 'EEG':
+        return eeg_scaler.inverse_transform(data)
+    elif name == 'Energy':
+        return energy_scaler.inverse_transform(data)
