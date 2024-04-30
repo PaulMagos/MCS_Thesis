@@ -32,13 +32,13 @@ num_time_steps = len(train_data)
 model = GTLSTM(input_size, output_size, hidden_size, dropout, num_layers, bidirectional, 'L1Loss', lr, ['EarlyStopping'], device)
 
 if not os.path.exists('./model_GTLSTM'):
-    model = model.train_step(train_data, 10)
+    model = model.train_step(train_data, 50)
     torch.save(model.state_dict(), './model_GTLSTM')
 else:
     state_dict = torch.load('./model_GTLSTM')
     model.load_state_dict(state_dict)
     if train_from_checkpoint:
-        model = model.train_step(train_data, 10)
+        model = model.train_step(train_data, 50)
         torch.save(model.state_dict(), './model_GTLSTM')
 
 output = model.predict_step(train_data, start=100, steps=7)
