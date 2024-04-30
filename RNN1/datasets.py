@@ -35,11 +35,11 @@ def get_Energy():
     EnergyTest = energy_scaler.fit_transform(np.array(EnergyTest[EnergyTest.columns[1:]]))
     return EnergyTrain, EnergyValidation, EnergyTest
     
-def print_upper_line():
-    print(f'{''.join(['‾' for _ in range(0, 40)])}')
+# def print_upper_line():
+#     print(f'{''.join(['_' for _ in range(0, 40)])}')
 
 def print_lower_line():
-    print(f'{''.join(['_' for _ in range(0, 40)])}')
+    print(f'{"".join(["_" for _ in range(0, 40)])}')
 
 def get_EEG():
     if not os.path.exists(f'{base_path}/data/EEG/train.pkl'):
@@ -70,7 +70,7 @@ def get_dateset(name='EEG'):
     print(f'{name} DATA')
     print_lower_line()
     print(f'Original Dataset: \t{len(test)+len(train)+len(val)}\nTrain Split: \t\t{len(train)} \t(70%)\nValidation Split: \t{len(val)} \t(20%)\nTest Split: \t\t{len(test)} \t(10%)')
-    print_upper_line()
+    print_lower_line()
     return train, val, test
 
 def inverse_transform(data, name='EEG'):
