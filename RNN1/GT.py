@@ -23,7 +23,7 @@ class GTM(nn.Module):
 
     def forward(self, x):
         return self.gmm(self.dense(self.lstm(x)[0]))
-    
+
     def train_step(self, train_data, epochs = 1):
         self.train()
         print("Starting training...")
@@ -32,7 +32,7 @@ class GTM(nn.Module):
             with tqdm(total=len(train_data) - 1) as pbar:
                 for i in range(len(train_data) - 1):
                     self.optimizer.zero_grad()
-                    if torch.rand(1).item() < 0.9 and  i > 100:
+                    if torch.rand(1).item() < 0 and  i > 100:
                         print(outputs2, outputs2.detach().unsqueeze(0), train_data[i:i+1, :].to(self.device))
                         outputs = self(outputs2.detach().unsqueeze(0))
                     else:
@@ -48,15 +48,15 @@ class GTM(nn.Module):
                         pbar.set_description("Loss %s" % mean_loss)
                         # wandb.log({"loss": mean_loss})
                     pbar.update(1)
-                    
+
             mean_loss = np.mean(losses_epoch)
             print(f'Epoch {epoch} - loss:', mean_loss)
             if self.callbacks['EarlyStopping'](mean_loss):
                 print(f'Early Stopped at epoch {epoch} with loss {mean_loss}')
                 break
-            
+
         return self
-    
+
     def predict_step(self, data, start = 0, steps = 7):
         self.eval()
         data_ = data[start:start+1, :].to(self.device)
@@ -67,8 +67,8 @@ class GTM(nn.Module):
             data_ = out
             output.append(out_tmp[0].cpu().detach().numpy())
         return output
-    
-    
+
+
 class GTLSTM(nn.Module):
     def __init__(self, input_size, output_size, hidden_size, dropout, num_layers, bidirectional, loss, lr, callbacks, device) -> None:
         super(GTLSTM, self).__init__()
@@ -86,7 +86,7 @@ class GTLSTM(nn.Module):
 
     def forward(self, x):
         return self.Relu(self.dense(self.lstm(x)[0]))
-    
+
     def train_step(self, train_data, epochs = 1):
         self.train()
         print("Starting training...")
@@ -110,15 +110,15 @@ class GTLSTM(nn.Module):
                         pbar.set_description("Loss %s" % mean_loss)
                         # wandb.log({"loss": mean_loss})
                     pbar.update(1)
-                    
+
             mean_loss = np.mean(losses_epoch)
             print(f'Epoch {epoch} - loss:', mean_loss)
             if self.callbacks['EarlyStopping'](mean_loss):
                 print(f'Early Stopped at epoch {epoch} with loss {mean_loss}')
                 break
-            
+
         return self
-    
+
     def predict_step(self, data, start = 0, steps = 7):
         self.eval()
         data_ = data[start:start+1, :].to(self.device)
@@ -128,7 +128,7 @@ class GTLSTM(nn.Module):
             out_tmp = data_[0].detach().unsqueeze(0)
             output.append(out_tmp[0].cpu().detach().numpy())
         return output
-    
+
 class GTR(nn.Module):
     def __init__(self, input_size, output_size, hidden_size, dropout, num_layers, bidirectional, lr, callbacks, device) -> None:
         super(GTR, self).__init__()
@@ -149,7 +149,7 @@ class GTR(nn.Module):
     def forward(self, x, hidden):
         out, hidden = self.rnn(x, hidden)
         return self.dense(out), hidden.detach()
-    
+
     def train_step(self, train_data, epochs = 1):
         hidden = torch.Tensor(self.num_layers*(2 if self.bidirectional else 1), self.hidden_size)
         self.train()
@@ -174,16 +174,16 @@ class GTR(nn.Module):
                         pbar.set_description(f"L1 Loss {mean_loss}, MSE : {mean_metric}")
                         # wandb.log({"loss": mean_loss})
                     pbar.update(1)
-                    
+
             mean_loss = np.mean(losses_epoch)
             mean_metric = np.mean(metrics_epoch)
             print(f'Epoch {epoch} - L1 loss: {mean_loss} - MSE: {mean_metric}')
             if self.callbacks['EarlyStopping'](mean_loss):
                 print(f'Early Stopped at epoch {epoch} with loss {mean_loss}')
                 break
-            
+
         return self
-    
+
     def predict_step(self, data, start = 0, steps = 7):
         self.eval()
         data_ = data[start:start+1, :].to(self.device)

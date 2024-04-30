@@ -5,8 +5,8 @@ import torch
 import os
 # Magic
 
-# device = 'cuda' if torch.cuda.is_available() else 'mps' if torch.backends.mps.is_available() else 'cpu'
-device = 'cpu'
+device = 'cuda' if torch.cuda.is_available() else 'mps' if torch.backends.mps.is_available() else 'cpu'
+# device = 'cpu'
 torch.set_default_device(device)
 
 # Model Parameters
@@ -36,7 +36,7 @@ if not os.path.exists('./model_GTR'):
 else:
     state_dict = torch.load('./model_GTR')
     model.load_state_dict(state_dict)
-  
+
 output = model.predict_step(train_data, start=2000, steps=70)
 
 data_true = inverse_transform(train_data[2000:2070, :])

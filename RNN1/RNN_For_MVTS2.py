@@ -10,12 +10,13 @@ device = 'cuda' if torch.cuda.is_available() else 'mps' if torch.backends.mps.is
 torch.set_default_device(device)
 
 # Model Parameters
-hidden_size = 100
-num_layers = 10
-lr = 0.01
+hidden_size = 2000
+num_layers = 5
+lr = 0.1
 dropout = 0.2
 bidirectional = True
 debug = False
+train_from_checkpoint = True
 
 EEGTrain, EEGValidation, EEGTest = get_dateset('EEG')
 # EnergyTrain, EnergyValidation, EnergyTest = get_dateset('Energy')
@@ -36,7 +37,10 @@ if not os.path.exists('./model_GTLSTM'):
 else:
     state_dict = torch.load('./model_GTLSTM')
     model.load_state_dict(state_dict)
-  
+    if train_from_checkpoint:
+        model = model.train_step(train_data, 10)
+        torch.save(model.state_dict(), './model_GTLSTM')
+
 output = model.predict_step(train_data, start=100, steps=7)
 
 data_true = inverse_transform(train_data[:7, :])
