@@ -5,6 +5,10 @@ import torch
 from tqdm import tqdm
 from EarlyStopping import EarlyStopping
 import torch.optim as optim
+import wandb
+
+wandb.init(config=args)
+
 torch.autograd.set_detect_anomaly(True)
 __all__ = ['GTM', 'GTLSTM', 'GTR']
 
@@ -27,7 +31,6 @@ class GTM(nn.Module):
     def train_step(self, train_data, epochs = 1):
         self.train()
         print("Starting training...")
-        torch.autograd.set_detect_anomaly(True)
         for epoch in range(1, epochs + 1):
             losses_epoch = []
             with tqdm(total=len(train_data) - 1) as pbar:
@@ -38,13 +41,15 @@ class GTM(nn.Module):
                     loss.backward()
                     self.optimizer.step()
                     losses_epoch.append(loss.item())
-                    if i%100 == 0:
+                    if i%500 == 0:
                         mean_loss = np.mean(losses_epoch)
+                        wandb.log({"loss": mean_loss})
                         pbar.set_description(f"Loss {mean_loss}")
                     pbar.update(1)
 
             mean_loss = np.mean(losses_epoch)
             print(f'Epoch {epoch} - loss:', mean_loss)
+            wandb.log({f'Epoch {epoch} - loss:': mean_loss})
             if self.callbacks['EarlyStopping'](self, mean_loss):
                 print(f'Early Stopped at epoch {epoch} with loss {mean_loss}')
                 break
