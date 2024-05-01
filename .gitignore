@@ -4,3 +4,4 @@ wandb
 .venv/*
 .venv
 nohup.out
+LSTMGMM1000.log

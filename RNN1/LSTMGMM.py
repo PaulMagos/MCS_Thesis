@@ -6,6 +6,7 @@ import torch
 import numpy as np
 import os
 
+MODEL_NAME= 'model_LSTMGMM1000'
 # Magic
 
 device = 'cuda' if torch.cuda.is_available() else 'mps' if torch.backends.mps.is_available() else 'cpu'
@@ -13,13 +14,13 @@ device = 'cuda' if torch.cuda.is_available() else 'mps' if torch.backends.mps.is
 torch.set_default_device(device)
 
 # Model Parameters
-hidden_size = 100
+hidden_size = 1000
 num_layers = 5
 lr = 0.001
 dropout = 0.2
-stds_to_use = 10
+stds_to_use = 5
 bidirectional = True
-mixture_dim = 10
+mixture_dim = 20
 debug = False
 
 EEGTrain, EEGValidation, EEGTest = get_dateset('EEG')
@@ -35,11 +36,11 @@ num_time_steps = len(train_data)
 model = GTM(input_size, output_size, hidden_size, mixture_dim, dropout, num_layers, bidirectional, gmm_loss, lr, ['EarlyStopping'], device, debug)
 
 
-if not os.path.exists('./model_GTM'):
+if not os.path.exists(f'./models/{MODEL_NAME}'):
     model = model.train_step(train_data, 10)
-    torch.save(model.state_dict(), './models/model_LSTMGMM')
+    torch.save(model.state_dict(), f'./models/{MODEL_NAME}')
 else:
-    state_dict = torch.load('./models/model_LSTMGMM')
+    state_dict = torch.load(f'./models/{MODEL_NAME}')
     model.load_state_dict(state_dict)
   
 # output = model.predict_step(train_data, start=0, steps=1000)

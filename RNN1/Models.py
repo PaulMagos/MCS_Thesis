@@ -7,7 +7,7 @@ from EarlyStopping import EarlyStopping
 import torch.optim as optim
 import wandb
 
-wandb.init(config=args)
+wandb.init(project='MCS_Thesis')
 
 torch.autograd.set_detect_anomaly(True)
 __all__ = ['GTM', 'GTLSTM', 'GTR']
