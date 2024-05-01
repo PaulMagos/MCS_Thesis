@@ -8,8 +8,8 @@ import os
 
 # Magic
 
-# device = 'cuda' if torch.cuda.is_available() else 'mps' if torch.backends.mps.is_available() else 'cpu'
-device = 'cpu'
+device = 'cuda' if torch.cuda.is_available() else 'mps' if torch.backends.mps.is_available() else 'cpu'
+# device = 'cpu'
 torch.set_default_device(device)
 
 # Model Parameters

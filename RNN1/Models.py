@@ -27,6 +27,7 @@ class GTM(nn.Module):
     def train_step(self, train_data, epochs = 1):
         self.train()
         print("Starting training...")
+        torch.autograd.set_detect_anomaly(True)
         for epoch in range(1, epochs + 1):
             losses_epoch = []
             with tqdm(total=len(train_data) - 1) as pbar:
