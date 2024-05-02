@@ -18,11 +18,11 @@ torch.set_default_device(device)
 # Model Parameters 100 hidden
 hidden_size = 100
 num_layers = 5
-lr = 0.001
+lr = 0.005
 dropout = 0.2
 stds_to_use = 10
 bidirectional = True
-mixture_dim = 10
+mixture_dim = 20
 debug = False
 
 # # Model Parameters 500 hidden
@@ -49,7 +49,7 @@ model = GTM(input_size, output_size, hidden_size, mixture_dim, dropout, num_laye
 
 configs = input_size, output_size, hidden_size, mixture_dim, dropout, num_layers, bidirectional, lr, ['EarlyStopping'], device, debug
 if not os.path.exists(f'./models/{MODEL_NAME}'):
-    model = model.train_step(train_data, 10)
+    model = model.train_step(train_data, 3)
     torch.save(model.state_dict(), f'./models/{MODEL_NAME}')
     with open(f'./models/{MODEL_NAME}.config', 'w') as config: 
         json.dump(configs, config)
@@ -57,9 +57,9 @@ else:
     state_dict = torch.load(f'./models/{MODEL_NAME}')
     model.load_state_dict(state_dict)
   
-output = model.predict_step(train_data, start=1000, steps=7)
+output = model.predict_step(train_data, start=1000, steps=100)
 
-data_true = denormalize(name=DATASET_NAME, x=train_data[1000:1007, :].numpy())
+data_true = denormalize(name=DATASET_NAME, x=train_data[1000:1100, :].numpy())
 data_predicted = denormalize(name=DATASET_NAME, x=output)
 
 for i in range(data_true.shape[-1]):
