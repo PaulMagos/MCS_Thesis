@@ -7,9 +7,10 @@ import torch
 import numpy as np
 import os
 
+DATASET_NAME = 'EEG'
+
 MODEL_NAME= 'model_LSTMGMM'
 # Magic
-
 device = 'cuda' if torch.cuda.is_available() else 'mps' if torch.backends.mps.is_available() else 'cpu'
 # device = 'cpu'
 torch.set_default_device(device)
@@ -34,11 +35,11 @@ debug = False
 # mixture_dim = 20
 # debug = False
 
-EEGTrain, EEGValidation, EEGTest = get_dateset('EEG')
+Train, Validation, Test = get_dateset(DATASET_NAME)
 # EnergyTrain, EnergyValidation, EnergyTest = get_dateset('Energy')
 
-train_data = torch.Tensor(EEGTrain)
-validation_data = torch.Tensor(EEGValidation)
+train_data = torch.Tensor(Train)
+validation_data = torch.Tensor(Validation)
 
 input_size = train_data.shape[-1]
 output_size = input_size
@@ -56,18 +57,20 @@ else:
     state_dict = torch.load(f'./models/{MODEL_NAME}')
     model.load_state_dict(state_dict)
   
-output = model.predict_step(train_data, start=0, steps=7)
+output = model.predict_step(train_data, start=1000, steps=7)
 
-# data_true = inverse_transform(train_data[:1000, :])
-# data_predicted = inverse_transform(output)§
+data_true = denormalize(name=DATASET_NAME, x=train_data[1000:1007, :].numpy())
+data_predicted = denormalize(name=DATASET_NAME, x=output)
 
-# first_elements_arr1 = [subarr[0] for subarr in data_true]
-# first_elements_arr2 = [subarr[0] for subarr in data_predicted]
-# # Plotting
-# plt.plot(first_elements_arr1, label='True')
-# plt.plot(first_elements_arr2, label='Predicted')
-# plt.xlabel('Index')
-# plt.ylabel('Values')
-# plt.title('Line Plot of First Arrays')
-# plt.legend()
-# plt.savefig('LSTMGMM.png')
+for i in range(data_true.shape[-1]):
+    first_elements_arr1 = [subarr[i] for subarr in data_true]
+    first_elements_arr2 = [subarr[i] for subarr in data_predicted]
+    # Plotting
+    plt.plot(first_elements_arr1, label='True')
+    plt.plot(first_elements_arr2, label='Predicted')
+    plt.xlabel('Index')
+    plt.ylabel('Values')
+    plt.title('Line Plot of First Arrays')
+    plt.legend()
+    plt.savefig(f'./PNG/{DATASET_NAME}/LSTMGMM_Feature_{i}.png')
+    plt.clf()

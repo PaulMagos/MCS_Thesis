@@ -57,18 +57,26 @@ class GTM(nn.Module):
 
     def predict_step(self, data, start = 0, steps = 7):
         M = self.gmm.M
-        print(data.shape[-1])
         D = data.shape[-1]
         self.eval()
         output = []
-        for i in range(start, start+steps):
-            data_ = self(data[i:i+1, :].to(self.device))
-            means = data_[:M*D].cpu().detach()
-            stds = data_[M*D : M*(D+1)].cpu().detach()
-            gmm_weights = data_[M*(D+1):].cpu().detach()
-            
-            pred = gmm_weights * np.random.normal(means, stds)
-            print(pred, pred.shape)
+        with tqdm(total=steps) as pbar:
+            for i in range(start, start+steps):
+                data_ = self(data[i:i+1, :].to(self.device))
+                means = data_[:M*D].cpu().detach().numpy()
+                stds = data_[M*D : M*(D+1)].cpu().detach().numpy()
+                gmm_weights = data_[M*(D+1):].cpu().detach().numpy()
+                
+                means = means.reshape(M, D)
+                stds = stds[:, np.newaxis]
+                gmm_weights = gmm_weights[:, np.newaxis]
+                
+                normal = np.random.normal(means, stds)
+                pred = gmm_weights * normal
+                pred = np.sum(pred, axis=0)#[:, np.newaxis]
+                output.append(pred)
+                pbar.update(1)
+        return np.array(output)
 
 
 class GTLSTM(nn.Module):

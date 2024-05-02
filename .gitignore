@@ -6,3 +6,4 @@ wandb
 nohup.out
 *.log
 models/*
+PNG/*
