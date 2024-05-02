@@ -7,8 +7,6 @@ from EarlyStopping import EarlyStopping
 import torch.optim as optim
 import wandb
 
-wandb.init(project='MCS_Thesis')
-
 torch.autograd.set_detect_anomaly(True)
 __all__ = ['GTM', 'GTLSTM', 'GTR']
 
@@ -29,6 +27,7 @@ class GTM(nn.Module):
         return self.gmm(self.dense(self.lstm(x)[0]))
 
     def train_step(self, train_data, epochs = 1):
+        wandb.init(project='MCS_Thesis')
         self.train()
         print("Starting training...")
         for epoch in range(1, epochs + 1):
@@ -57,8 +56,19 @@ class GTM(nn.Module):
         return self
 
     def predict_step(self, data, start = 0, steps = 7):
+        M = self.gmm.M
+        print(data.shape[-1])
+        D = data.shape[-1]
         self.eval()
-        # TODO
+        output = []
+        for i in range(start, start+steps):
+            data_ = self(data[i:i+1, :].to(self.device))
+            means = data_[:M*D].cpu().detach()
+            stds = data_[M*D : M*(D+1)].cpu().detach()
+            gmm_weights = data_[M*(D+1):].cpu().detach()
+            
+            pred = gmm_weights * np.random.normal(means, stds)
+            print(pred, pred.shape)
 
 
 class GTLSTM(nn.Module):
