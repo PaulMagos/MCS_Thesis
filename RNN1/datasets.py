@@ -9,6 +9,26 @@ __all__ = ['get_dataset', 'normalize', 'denormalize']
 
 base_path = f'{os.path.dirname(__file__)}/'
 
+def get_SynteticSin(stds_to_use: int, change: bool):
+    if not (os.path.exists(f'{base_path}/data/SynteticSin/train.pkl') and os.path.exists(f'{base_path}/data/SynteticSin/preprocessing.npz')):
+        data = pd.read_json(f'{base_path}/data/SynteticSin/data.json')
+        SinTrain, SinValidation, SinTest = \
+                    np.split(data,[int(.7*len(data)), int(.9*len(data))])
+        pickle.dump(SinTrain, open(f'{base_path}/data/SynteticSin/train.pkl', 'wb'))
+        pickle.dump(SinValidation, open(f'{base_path}/data/SynteticSin/validation.pkl', 'wb'))
+        pickle.dump(SinTest, open(f'{base_path}/data/SynteticSin/test.pkl', 'wb'))            
+        means = np.mean(np.array(data[data.columns[1:]]), 0)
+        stds = stds_to_use * np.std(np.array(data[data.columns[1:]]), 0)
+        np.savez(f'{base_path}/data/SynteticSin/preprocessing.npz', means=means, stds=stds, change=change)
+    else:
+        SinTrain = pickle.load(open(f'{base_path}/data/SynteticSin/train.pkl', 'rb'))
+        SinValidation = pickle.load(open(f'{base_path}/data/SynteticSin/validation.pkl', 'rb'))
+        SinTest = pickle.load(open(f'{base_path}/data/SynteticSin/test.pkl', 'rb'))
+    
+    SinTrain = normalize(name='SynteticSin', x=np.array(SinTrain[SinTrain.columns[1:]]))
+    SinValidation = normalize(name='SynteticSin', x=np.array(SinValidation[SinValidation.columns[1:]]))
+    SinTest = normalize(name='SynteticSin', x=np.array(SinTest[SinTest.columns[1:]]))
+    return SinTrain, SinValidation, SinTest
 
 def get_Energy(stds_to_use: int, change: bool):
     if not (os.path.exists(f'{base_path}/data/Energy/train.pkl') and os.path.exists(f'{base_path}/data/Energy/preprocessing.npz')):
@@ -67,7 +87,14 @@ def get_EEG(stds_to_use: int, change: bool):
     
     
 def get_dateset(name='EEG', stds_to_use=10, change=True):
-    train, val, test = get_EEG(stds_to_use, change) if name == 'EEG' else get_Energy(stds_to_use, change)
+    match(name):
+        case 'EEG':
+            train, val, test = get_EEG(stds_to_use, change)
+        case 'Energy':
+            train, val, test = get_Energy(stds_to_use, change)
+        case 'SynteticSin':
+            train, val, test = get_SynteticSin(stds_to_use, change)
+    
     print(f'{name} DATA')
     print_line()
     print(f'Original Dataset: \t{len(test)+len(train)+len(val)}\nTrain Split: \t\t{len(train)} \t(70%)\nValidation Split: \t{len(val)} \t(20%)\nTest Split: \t\t{len(test)} \t(10%)')

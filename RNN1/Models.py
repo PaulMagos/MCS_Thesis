@@ -26,7 +26,7 @@ class GTM(nn.Module):
     def forward(self, x):
         return self.gmm(self.dense(self.lstm(x)[0]))
 
-    def train_step(self, train_data, epochs = 1):
+    def train_step(self, train_data, epochs = 1, step_log=500):
         wandb.init(project='MCS_Thesis')
         self.train()
         print("Starting training...")
@@ -40,7 +40,7 @@ class GTM(nn.Module):
                     loss.backward()
                     self.optimizer.step()
                     losses_epoch.append(loss.item())
-                    if i%500 == 0:
+                    if i%step_log == 0:
                         mean_loss = np.mean(losses_epoch)
                         wandb.log({"loss": mean_loss})
                         pbar.set_description(f"Loss {mean_loss}")
@@ -48,7 +48,7 @@ class GTM(nn.Module):
 
             mean_loss = np.mean(losses_epoch)
             print(f'Epoch {epoch} - loss:', mean_loss)
-            wandb.log({f'Epoch {epoch} - loss:': mean_loss})
+            wandb.log({f'Epoch - loss:': mean_loss})
             if self.callbacks['EarlyStopping'](self, mean_loss):
                 print(f'Early Stopped at epoch {epoch} with loss {mean_loss}')
                 break
