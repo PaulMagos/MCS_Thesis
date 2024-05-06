@@ -11,14 +11,14 @@ torch.autograd.set_detect_anomaly(True)
 __all__ = ['GTM', 'GTLSTM', 'GTR']
 
 class GTM(nn.Module):
-    def __init__(self, input_size, output_size, hidden_size, mixture_dim, dropout, num_layers, bidirectional, loss, lr, callbacks, device, debug) -> None:
+    def __init__(self, input_size, output_size, hidden_size, mixture_dim, dropout, num_layers, bidirectional, loss, lr, weight_decay, callbacks, device, debug) -> None:
         super(GTM, self).__init__()
         self.lstm = nn.LSTM(input_size=input_size, hidden_size=hidden_size, dropout=dropout, num_layers=num_layers, device=device, bidirectional=bidirectional)
         self.dense = nn.Linear(in_features=hidden_size*(2 if bidirectional else 1), out_features=(output_size+2)*mixture_dim, device=device)
         self.gmm = GMM(M = mixture_dim, device = device, debug=debug)
         self.loss = loss
         self.device = device
-        self.optimizer = optim.RMSprop(self.parameters(), lr=lr)
+        self.optimizer = optim.RMSprop(self.parameters(), lr=lr, weight_decay=weight_decay)
         self.callbacks = {}
         if 'EarlyStopping' in callbacks:
             self.callbacks['EarlyStopping'] = EarlyStopping()
@@ -38,6 +38,7 @@ class GTM(nn.Module):
                     outputs = self(train_data[i:i+1, :].to(self.device))
                     loss = self.loss(train_data[i+1, :].to(self.device), outputs)
                     loss.backward()
+                    torch.nn.utils.clip_grad_norm_(self.parameters(), max_norm=1)
                     self.optimizer.step()
                     losses_epoch.append(loss.item())
                     if i%step_log == 0:
@@ -98,8 +99,9 @@ class GTLSTM(nn.Module):
     def forward(self, x):
         return self.Relu(self.dense(self.lstm(x)[0]))
 
-    def train_step(self, train_data, epochs = 1):
+    def train_step(self, train_data, epochs = 1, step_log=500):
         self.train()
+        wandb.init(project='MCS_Thesis')
         print("Starting training...")
         for epoch in range(1, epochs + 1):
             losses_epoch = []
@@ -115,21 +117,23 @@ class GTLSTM(nn.Module):
                     self.optimizer.step()
                     losses_epoch.append(loss.item())
                     metrics_epoch.append(metric.item())
-                    if i%100 == 0:
+                    if i%step_log == 0:
                         mean_loss = np.mean(losses_epoch)
                         mean_metric = np.mean(metrics_epoch)
+                        wandb.log({"loss": mean_loss, 'MSE': mean_metric})
                         pbar.set_description(f"Loss {mean_loss}, MSE : {mean_metric}")
                     pbar.update(1)
 
             mean_loss = np.mean(losses_epoch)
             mean_metric = np.mean(metrics_epoch)
             print(f'Epoch {epoch} - loss: {mean_loss} - MSE: {mean_metric}')
+            wandb.log({'Epoch - loss:': mean_loss, 'Epoch - MSE:': mean_metric})
             if self.callbacks['EarlyStopping'](self, mean_loss):
                 print(f'Early Stopped at epoch {epoch} with loss {mean_loss}')
                 break
 
         return self
-
+    
     def predict_step(self, data, start = 0, steps = 7):
         self.eval()
         data_ = data[start:start+1, :].to(self.device)
@@ -143,6 +147,12 @@ class GTLSTM(nn.Module):
 class GTR(nn.Module):
     def __init__(self, input_size, output_size, hidden_size, dropout, num_layers, bidirectional, lr, callbacks, device) -> None:
         super(GTR, self).__init__()
+        # if isinstance(hidden_size, list):
+        #     if num_layers > 1 and len(hidden_size) > 1:
+        #         assert len(hidden_size) == num_layers
+        # else:
+        #     hidden_size = [hidden_size for _ in range(num_layers)]
+        
         self.num_layers = num_layers
         self.bidirectional = bidirectional
         self.hidden_size = hidden_size

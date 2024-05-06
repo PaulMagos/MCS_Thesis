@@ -1,29 +1,30 @@
-from datasets import get_dateset, inverse_transform
+from datasets import get_dateset, normalize, denormalize
 import matplotlib.pyplot as plt
-from RNN1.Models import GTLSTM
+from Models import GTLSTM
 import torch
+import json
 import os
 # Magic
 
 device = 'cuda' if torch.cuda.is_available() else 'mps' if torch.backends.mps.is_available() else 'cpu'
 # device = 'cpu'
 torch.set_default_device(device)
-
+DATASET_NAME = 'SynteticSin'
+MODEL_NAME= 'model_GTLSTM'
 # Model Parameters
-hidden_size = 2000
-num_layers = 5
-lr = 0.1
+hidden_size = 100
+num_layers = 3
+lr = 0.01
 dropout = 0.2
 bidirectional = True
 debug = False
 train_from_checkpoint = True
 
-EEGTrain, EEGValidation, EEGTest = get_dateset('EEG')
-# EnergyTrain, EnergyValidation, EnergyTest = get_dateset('Energy')
+Train, Validation, Test = get_dateset(DATASET_NAME)
 
-
-train_data = torch.Tensor(EEGTrain)
-validation_data = torch.Tensor(EEGValidation)
+train_data = torch.Tensor(Train)
+train_label = denormalize(train_data)
+validation_data = torch.Tensor(Validation)
 
 input_size = train_data.shape[-1]
 output_size = input_size
@@ -31,28 +32,31 @@ num_time_steps = len(train_data)
 
 model = GTLSTM(input_size, output_size, hidden_size, dropout, num_layers, bidirectional, 'L1Loss', lr, ['EarlyStopping'], device)
 
-if not os.path.exists('./model_GTLSTM'):
-    model = model.train_step(train_data, 50)
-    torch.save(model.state_dict(), './model_GTLSTM')
+configs = input_size, output_size, hidden_size, dropout, num_layers, bidirectional, 'L1Loss', lr, ['EarlyStopping']
+if not os.path.exists(f'./models/{MODEL_NAME}'):
+    model = model.train_step(train_data, 10, 50)
+    torch.save(model.state_dict(), f'./models/{MODEL_NAME}')
+    with open(f'./models/{MODEL_NAME}.config', 'w') as config: 
+        json.dump(configs, config)
 else:
-    state_dict = torch.load('./model_GTLSTM')
+    state_dict = torch.load(f'./models/{MODEL_NAME}')
     model.load_state_dict(state_dict)
-    if train_from_checkpoint:
-        model = model.train_step(train_data, 50)
-        torch.save(model.state_dict(), './model_GTLSTM')
+  
+output = model.predict_step(train_data, start=0, steps=100)
 
-output = model.predict_step(train_data, start=100, steps=7)
+print(output)
+data_true = denormalize(name=DATASET_NAME, x=train_data[0:100, :].numpy())
+data_predicted = denormalize(name=DATASET_NAME, x=output)
 
-data_true = inverse_transform(train_data[:7, :])
-data_predicted = inverse_transform(output)
-
-first_elements_arr1 = [subarr[0] for subarr in data_true]
-first_elements_arr2 = [subarr[0] for subarr in data_predicted]
-# Plotting
-plt.plot(first_elements_arr1, label='True')
-plt.plot(first_elements_arr2, label='Predicted')
-plt.xlabel('Index')
-plt.ylabel('Values')
-plt.title('Line Plot of First Arrays')
-plt.legend()
-plt.savefig('GTLSTM.png')
+for i in range(data_true.shape[-1]):
+    first_elements_arr1 = [subarr[i] for subarr in data_true]
+    first_elements_arr2 = [subarr[i] for subarr in data_predicted]
+    # Plotting
+    plt.plot(first_elements_arr1, label='True')
+    plt.plot(first_elements_arr2, label='Predicted')
+    plt.xlabel('Index')
+    plt.ylabel('Values')
+    plt.title('Line Plot of First Arrays')
+    plt.legend()
+    plt.savefig(f'./PNG/{DATASET_NAME}/{MODEL_NAME}_Feature_{i}.png')
+    plt.clf()

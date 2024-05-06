@@ -9,20 +9,21 @@ import os
 
 DATASET_NAME = 'SynteticSin'
 
-MODEL_NAME= 'model_LSTMGMMSynteticSin'
+MODEL_NAME= 'model_LSTMGMMSS2'
 # Magic
 device = 'cuda' if torch.cuda.is_available() else 'mps' if torch.backends.mps.is_available() else 'cpu'
 # device = 'cpu'
 torch.set_default_device(device)
 
 # Model Parameters 100 hidden
-hidden_size = 50
-num_layers = 3
-lr = 0.0001
+hidden_size = 100
+num_layers = 20
+lr = 0.001
+weight_decay = 0.001
 dropout = 0.2
-stds_to_use = 5
-bidirectional = True
-mixture_dim = 3
+stds_to_use = 10
+bidirectional = False
+mixture_dim = 20
 debug = False
 
 # # Model Parameters 500 hidden
@@ -45,9 +46,9 @@ input_size = train_data.shape[-1]
 output_size = input_size
 num_time_steps = len(train_data)
 
-model = GTM(input_size, output_size, hidden_size, mixture_dim, dropout, num_layers, bidirectional, gmm_loss, lr, ['EarlyStopping'], device, debug)
+model = GTM(input_size, output_size, hidden_size, mixture_dim, dropout, num_layers, bidirectional, gmm_loss, lr, weight_decay, ['EarlyStopping'], device, debug)
 
-configs = input_size, output_size, hidden_size, mixture_dim, dropout, num_layers, bidirectional, lr, ['EarlyStopping'], device, debug
+configs = input_size, output_size, hidden_size, mixture_dim, dropout, num_layers, bidirectional, lr, weight_decay, ['EarlyStopping'], device, debug
 if not os.path.exists(f'./models/{MODEL_NAME}'):
     model = model.train_step(train_data, 10, 50)
     torch.save(model.state_dict(), f'./models/{MODEL_NAME}')
@@ -59,6 +60,7 @@ else:
   
 output = model.predict_step(train_data, start=0, steps=100)
 
+print(output)
 data_true = denormalize(name=DATASET_NAME, x=train_data[0:100, :].numpy())
 data_predicted = denormalize(name=DATASET_NAME, x=output)
 

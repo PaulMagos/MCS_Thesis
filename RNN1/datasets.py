@@ -17,17 +17,17 @@ def get_SynteticSin(stds_to_use: int, change: bool):
         pickle.dump(SinTrain, open(f'{base_path}/data/SynteticSin/train.pkl', 'wb'))
         pickle.dump(SinValidation, open(f'{base_path}/data/SynteticSin/validation.pkl', 'wb'))
         pickle.dump(SinTest, open(f'{base_path}/data/SynteticSin/test.pkl', 'wb'))            
-        means = np.mean(np.array(data[data.columns[1:]]), 0)
-        stds = stds_to_use * np.std(np.array(data[data.columns[1:]]), 0)
+        means = np.mean(np.array(data[data.columns]), 0)
+        stds = stds_to_use * np.std(np.array(data[data.columns]), 0)
         np.savez(f'{base_path}/data/SynteticSin/preprocessing.npz', means=means, stds=stds, change=change)
     else:
         SinTrain = pickle.load(open(f'{base_path}/data/SynteticSin/train.pkl', 'rb'))
         SinValidation = pickle.load(open(f'{base_path}/data/SynteticSin/validation.pkl', 'rb'))
         SinTest = pickle.load(open(f'{base_path}/data/SynteticSin/test.pkl', 'rb'))
     
-    SinTrain = normalize(name='SynteticSin', x=np.array(SinTrain[SinTrain.columns[1:]]))
-    SinValidation = normalize(name='SynteticSin', x=np.array(SinValidation[SinValidation.columns[1:]]))
-    SinTest = normalize(name='SynteticSin', x=np.array(SinTest[SinTest.columns[1:]]))
+    SinTrain = normalize(name='SynteticSin', x=np.array(SinTrain[SinTrain.columns]))
+    SinValidation = normalize(name='SynteticSin', x=np.array(SinValidation[SinValidation.columns]))
+    SinTest = normalize(name='SynteticSin', x=np.array(SinTest[SinTest.columns]))
     return SinTrain, SinValidation, SinTest
 
 def get_Energy(stds_to_use: int, change: bool):
