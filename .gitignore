@@ -7,3 +7,5 @@ nohup.out
 *.log
 models/*
 PNG/*
+.DS_Store
+*/.DS_Store
