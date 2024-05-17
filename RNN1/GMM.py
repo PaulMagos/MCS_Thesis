@@ -5,8 +5,8 @@ import numpy as np
 
 __all__= ['GMM', 'gmm_loss']
 
-# device = 'cuda' if torch.cuda.is_available() else 'mps' if torch.backends.mps.is_available() else 'cpu'
-device = 'cpu'
+device = 'cuda' if torch.cuda.is_available() else 'mps' if torch.backends.mps.is_available() else 'cpu'
+# device = 'cpu'
 torch.set_default_device(device)
  
 class GMM(nn.Module):
@@ -36,9 +36,9 @@ def gmm_loss(y_true, y_pred):
     """
 
     def loss(m, M, D, y_true, y_pred):
-        mu = y_pred[D*m:(m+1)*D]
-        sigma = y_pred[D*M+m]
-        alpha = y_pred[(D+1)*M+m]
+        mu = y_pred[:, D*m:(m+1)*D]
+        sigma = y_pred[:, D*M+m]
+        alpha = y_pred[:, (D+1)*M+m]
         
         sqrt = torch.sqrt(2. * torch.tensor(np.pi))
         # Calculate exponent term

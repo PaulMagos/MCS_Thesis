@@ -28,6 +28,13 @@ def get_SynteticSin(stds_to_use: int, change: bool):
     SinTrain = normalize(name='SynteticSin', x=np.array(SinTrain[SinTrain.columns]))
     SinValidation = normalize(name='SynteticSin', x=np.array(SinValidation[SinValidation.columns]))
     SinTest = normalize(name='SynteticSin', x=np.array(SinTest[SinTest.columns]))
+    SinTrain = denormalize(name='SynteticSin', x=SinTrain)
+    SinValidation = denormalize(name='SynteticSin', x=SinValidation)
+    SinTest = denormalize(name='SynteticSin', x=SinTest)
+    
+    SinTrain = SinTrain.reshape(SinTrain.shape[0], 1, SinTrain.shape[-1])
+    SinValidation = SinValidation.reshape(SinValidation.shape[0], 1, SinValidation.shape[-1])
+    SinTest = SinTest.reshape(SinTest.shape[0], 1, SinTest.shape[-1])
     return SinTrain, SinValidation, SinTest
 
 def get_Energy(stds_to_use: int, change: bool):
@@ -50,9 +57,17 @@ def get_Energy(stds_to_use: int, change: bool):
         EnergyValidation = pickle.load(open(f'{base_path}/data/Energy/validation.pkl', 'rb'))
         EnergyTest = pickle.load(open(f'{base_path}/data/Energy/test.pkl', 'rb'))
     
+        
     EnergyTrain = normalize(name='Energy', x=np.array(EnergyTrain[EnergyTrain.columns[1:]]))
     EnergyValidation = normalize(name='Energy', x=np.array(EnergyValidation[EnergyValidation.columns[1:]]))
     EnergyTest = normalize(name='Energy', x=np.array(EnergyTest[EnergyTest.columns[1:]]))
+    EnergyTrain = denormalize(name='Energy', x=EnergyTrain)
+    EnergyValidation = denormalize(name='Energy', x=EnergyValidation)
+    EnergyTest = denormalize(name='Energy', x=EnergyTest)
+    
+    EnergyTrain = EnergyTrain.reshape(EnergyTrain.shape[0], 1, EnergyTrain.shape[-1])
+    EnergyValidation = EnergyValidation.reshape(EnergyValidation.shape[0], 1, EnergyValidation.shape[-1])
+    EnergyTest = EnergyTest.reshape(EnergyTest.shape[0], 1, EnergyTest.shape[-1])
     return EnergyTrain, EnergyValidation, EnergyTest
 
 def print_line():
@@ -82,7 +97,13 @@ def get_EEG(stds_to_use: int, change: bool):
     EEGTrain = normalize(name='EEG', x=np.array(EEGTrain[EEGTrain.columns[:-1]]))
     EEGValidation = normalize(name='EEG', x=np.array(EEGValidation[EEGValidation.columns[:-1]]))
     EEGTest = normalize(name='EEG', x=np.array(EEGTest[EEGTest.columns[:-1]]))
+    EEGTrain = denormalize(name='EEG', x=EEGTrain)
+    EEGValidation = denormalize(name='EEG', x=EEGValidation)
+    EEGTest = denormalize(name='EEG', x=EEGTest)
     
+    EEGTrain = EEGTrain.reshape(EEGTrain.shape[0], 1, EEGTrain.shape[-1])
+    EEGValidation = EEGValidation.reshape(EEGValidation.shape[0], 1, EEGValidation.shape[-1])
+    EEGTest = EEGTest.reshape(EEGTest.shape[0], 1, EEGTest.shape[-1])
     return EEGTrain, EEGValidation, EEGTest
     
     
