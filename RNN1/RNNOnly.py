@@ -1,56 +1,104 @@
-from datasets import get_dateset, inverse_transform
+from datasets import get_dateset
 import matplotlib.pyplot as plt
-from RNN1.Models import GTR
+from Models import GTR
 import torch
 import os
+import json
 # Magic
 
-device = 'cuda' if torch.cuda.is_available() else 'mps' if torch.backends.mps.is_available() else 'cpu'
+device = 'cuda:1' if torch.cuda.is_available() else 'mps' if torch.backends.mps.is_available() else 'cpu'
 # device = 'cpu'
 torch.set_default_device(device)
 
+DATASET_NAME = 'SynteticSin'
+MODEL_NAME= 'GTR'
+
 # Model Parameters
-hidden_size = 100
-num_layers = 10
-lr = 0.01
+hidden_size = 1024
+num_layers = 1
+lr = 0.1
 dropout = 0.2
 bidirectional = True
 debug = False
+train_from_checkpoint = False
 
-EEGTrain, EEGValidation, EEGTest = get_dateset('EEG')
-# EnergyTrain, EnergyValidation, EnergyTest = get_dateset('Energy')
+Train, Validation, Test = get_dateset(DATASET_NAME)
 
+train_data = torch.Tensor(Train)
+train_label = train_data
+train_data = train_data[:-1]
+train_label = train_label[1:]
 
-train_data = torch.Tensor(EEGTrain)
-validation_data = torch.Tensor(EEGValidation)
+validation_data = torch.Tensor(Validation)
+validation_label = validation_data
+validation_data = validation_data[:-1]
+validation_label = validation_label[1:]
 
 input_size = train_data.shape[-1]
 output_size = input_size
 num_time_steps = len(train_data)
 
 model = GTR(input_size, output_size, hidden_size, dropout, num_layers, bidirectional, lr, ['EarlyStopping'], device)
+configs = input_size, output_size, hidden_size, dropout, num_layers, bidirectional, 'mse', lr, ['EarlyStopping']
 
-if not os.path.exists('./model_GTR'):
-    model = model.train_step(train_data, 10)
-    torch.save(model.state_dict(), './model_GTR')
-else:
-    state_dict = torch.load('./model_GTR')
+try:
+    state_dict = torch.load(f'./models/{MODEL_NAME}_{DATASET_NAME}')
     model.load_state_dict(state_dict)
+except:
+    print('Model not present or incompatible')
+    train_from_checkpoint = True
 
-output = model.predict_step(train_data, start=2000, steps=70)
+    
+if train_from_checkpoint:
+    model, history = model.train_step(train_data, train_label, 32, 25, 100)
+    torch.save(model.state_dict(), f'./models/{MODEL_NAME}_{DATASET_NAME}')
+    with open(f'./models/{MODEL_NAME}.hist', 'w') as hist:
+        json.dump(history, hist)
+    with open(f'./models/{MODEL_NAME}.config', 'w') as config: 
+        json.dump(configs, config)
 
-data_true = inverse_transform(train_data[2000:2070, :])
-data_predicted = inverse_transform(output)
-# data_true = train_data[:7, :]
-# data_predicted = output
+output = model.predict_step(train_data, start=0, steps=100)
 
-first_elements_arr1 = [subarr[0] for subarr in data_true]
-first_elements_arr2 = [subarr[0] for subarr in data_predicted]
-# Plotting
-plt.plot(first_elements_arr1, label='True')
-plt.plot(first_elements_arr2, label='Predicted')
-plt.xlabel('Index')
-plt.ylabel('Values')
-plt.title('Line Plot of First Arrays')
-plt.legend()
-plt.savefig('GTR.png')
+data_true = train_label[:100, :, :].numpy()
+data_predicted = output.reshape(output.shape[0], output.shape[-1])
+data_true = data_true.reshape(data_true.shape[0], data_true.shape[-1])
+print(data_predicted.shape, data_true.shape)
+for i in range(data_true.shape[-1]):
+    first_elements_arr1 = [subarr[i] for subarr in data_true]
+    first_elements_arr2 = [subarr[i] for subarr in data_predicted]
+    # Plotting
+    plt.plot(first_elements_arr1, label='True')
+    plt.plot(first_elements_arr2, label='Predicted')
+    plt.xlabel('Index')
+    plt.ylabel('Values')
+    plt.title('Line Plot of First Arrays')
+    plt.legend()
+    plt.savefig(f'./PNG/{DATASET_NAME}/{MODEL_NAME}_Feature_{i}.png')
+    plt.clf()
+    
+output = model.generate_step(train_data, start=0, steps=100)
+
+data_true = train_label[:100, :, :].numpy()
+data_predicted = output.reshape(output.shape[0], output.shape[-1])
+data_true = data_true.reshape(data_true.shape[0], data_true.shape[-1])
+print(data_predicted.shape, data_true.shape)
+for i in range(data_true.shape[-1]):
+    first_elements_arr1 = [subarr[i] for subarr in data_true]
+    first_elements_arr2 = [subarr[i] for subarr in data_predicted]
+    # Plotting
+    plt.plot(first_elements_arr1, label='True')
+    plt.plot(first_elements_arr2, label='Generated')
+    plt.xlabel('Index')
+    plt.ylabel('Values')
+    plt.title('Line Plot of First Arrays')
+    plt.legend()
+    plt.savefig(f'./PNG/{DATASET_NAME}/{MODEL_NAME}_Feature_{i}_GEN.png')
+    plt.clf()
+    
+with open(f'./models/{MODEL_NAME}.hist', 'r') as hist:
+    history = json.load(hist)
+    
+for key, values in history.items():
+    plt.plot(values, label=key)
+plt.savefig(f'./PNG/{DATASET_NAME}/{MODEL_NAME}_History.png')
+plt.clf()

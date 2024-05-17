@@ -88,7 +88,8 @@ class GTLSTM(nn.Module):
     def __init__(self, input_size, output_size, hidden_size, dropout, num_layers, bidirectional, loss, lr, callbacks, device) -> None:
         super(GTLSTM, self).__init__()
         self.lstm = nn.LSTM(input_size=input_size, hidden_size=hidden_size, dropout=dropout, num_layers=num_layers, device=device, bidirectional=bidirectional)
-        self.relu = nn.Tanh()
+        self.activation1 = nn.Tanh()
+        self.activation2 = nn.Tanh()
         self.dense = nn.Linear(in_features=hidden_size*(2 if bidirectional else 1), out_features=output_size, device=device)
         # self.Relu = nn.Linear(output_size, output_size)
         self.optimizer = optim.SGD(self.parameters(), lr=lr, momentum=0.3)
@@ -105,8 +106,8 @@ class GTLSTM(nn.Module):
                 self.metrics = nn.L1Loss(reduction='mean')
 
     def forward(self, x):
-        # return self.Relu(self.dense(self.lstm(x)[0]))
-        return self.dense(self.relu(self.lstm(x)[0]))
+        return self.activation2(self.dense(self.activation1(self.lstm(x)[0])))
+        # return self.dense(self.activation1(self.lstm(x)[0]))
 
     def train_step(self, train_data, train_label=None, batch_size=1, epochs = 1, step_log=500):
         self.train()
@@ -114,8 +115,8 @@ class GTLSTM(nn.Module):
             train_label = train_data[1:]
             train_data = train_data[:-1]
         train_label = torch.Tensor(train_label).type(torch.float32)
-        # wandb.init(project='MCS_Thesis')
         print("Starting training...")
+        history = {'loss': [], 'MAE': []}
         for epoch in range(1, epochs + 1):
             losses_epoch = []
             metrics_epoch = []
@@ -133,19 +134,20 @@ class GTLSTM(nn.Module):
                     if i%step_log == 0:
                         mean_loss = np.mean(losses_epoch)
                         mean_metric = np.mean(metrics_epoch)
-                        # wandb.log({"loss": mean_loss, 'MSE': mean_metric})
                         pbar.set_description(f"Loss {mean_loss}, MAE : {mean_metric}")
                     pbar.update(1)
 
             mean_loss = np.mean(losses_epoch)
             mean_metric = np.mean(metrics_epoch)
+            history['loss'].append(mean_loss)
+            history['MAE'].append(mean_metric)
             print(f'Epoch {epoch} - MSE: {mean_loss} - MAE: {mean_metric}')
             # wandb.log({'Epoch - loss:': mean_loss, 'Epoch - MSE:': mean_metric})
             if self.callbacks['EarlyStopping'](self, mean_loss):
                 print(f'Early Stopped at epoch {epoch} with loss {mean_loss}')
                 break
 
-        return self, losses_epoch
+        return self, history
     
     def predict_step(self, data, start = 0, steps = 7):
         self.eval()
@@ -164,18 +166,13 @@ class GTLSTM(nn.Module):
 class GTR(nn.Module):
     def __init__(self, input_size, output_size, hidden_size, dropout, num_layers, bidirectional, lr, callbacks, device) -> None:
         super(GTR, self).__init__()
-        # if isinstance(hidden_size, list):
-        #     if num_layers > 1 and len(hidden_size) > 1:
-        #         assert len(hidden_size) == num_layers
-        # else:
-        #     hidden_size = [hidden_size for _ in range(num_layers)]
-        
         self.num_layers = num_layers
         self.bidirectional = bidirectional
         self.hidden_size = hidden_size
         self.rnn = nn.RNN(input_size=input_size, hidden_size=hidden_size, dropout=dropout, num_layers=num_layers, device=device, bidirectional=bidirectional)
         self.dense = nn.Linear(in_features=hidden_size*(2 if bidirectional else 1), out_features=output_size, device=device)
-        # self.Relu = nn.Tanh()
+        self.activation1 = nn.Tanh()
+        self.activation2 = nn.Tanh()
         self.optimizer = optim.SGD(self.parameters(), lr=lr, momentum=0.3)
         self.callbacks = {}
         if 'EarlyStopping' in callbacks:
@@ -184,23 +181,29 @@ class GTR(nn.Module):
         self.loss = nn.MSELoss()
         self.metrics = nn.L1Loss()
 
-    def forward(self, x, hidden):
-        out, hidden = self.rnn(x, hidden)
-        return self.dense(out), hidden.detach()
+    def forward(self, x):
+        out, hidden = self.rnn(x)
+        return self.activation2(self.dense(self.activation1(out)))
 
-    def train_step(self, train_data, train_label, epochs = 1, step_log=500):
-        # wandb.init(project='MCS_Thesis')
-        hidden = torch.Tensor(self.num_layers*(2 if self.bidirectional else 1), self.hidden_size)
+    def train_step(self, train_data, train_label=None, batch_size=1, epochs = 1, step_log=500):
+        hidden = None
+        # hidden = torch.Tensor(self.num_layers*(2 if self.bidirectional else 1), 1, self.hidden_size).to(self.device)
         self.train()
+        if train_label==None:
+            train_label = train_data[1:]
+            train_data = train_data[:-1]
+        train_label = torch.Tensor(train_label).type(torch.float32)
+        history = {'loss': [], 'MEE': []}
         print("Starting training...")
         for epoch in range(1, epochs + 1):
             losses_epoch = []
             metrics_epoch = []
-            with tqdm(total=len(train_data) - 1) as pbar:
-                for i in range(len(train_data) - 1):
-                    outputs, hidden = self(train_data[i:i+1, :].to(self.device), hidden)
-                    loss = self.loss(train_data[i+1, :].to(self.device), outputs)
-                    metric = self.metrics(train_data[i+1, :].to(self.device), outputs)
+            with tqdm(total=len(train_data)//batch_size+1) as pbar:
+                for i in range(0, len(train_data), batch_size):
+                    window =  i+batch_size-32 if (i+batch_size - 32 >0) else 0
+                    outputs = self(train_data[window:i+batch_size, :, :].to(self.device))
+                    loss = self.loss(train_label[window:i+batch_size, :, :].to(self.device), outputs)
+                    metric = self.metrics(train_label[window:i+batch_size, :, :].to(self.device), outputs)
                     self.optimizer.zero_grad()
                     loss.backward(retain_graph=True)
                     self.optimizer.step()
@@ -212,23 +215,38 @@ class GTR(nn.Module):
                         # wandb.log({"loss": mean_loss, 'MSE': mean_metric})
                         pbar.set_description(f"Loss {mean_loss}, MEE : {mean_metric}")
                     pbar.update(1)
-
+                    
             mean_loss = np.mean(losses_epoch)
             mean_metric = np.mean(metrics_epoch)
-            # wandb.log({'Epoch - loss:': mean_loss, 'Epoch - MSE:': mean_metric})
-            print(f'Epoch {epoch} - MSE loss: {mean_loss} - MEE: {mean_metric}')
+            history['loss'].append(mean_loss)
+            history['MEE'].append(mean_metric)
+            print(f'Epoch {epoch} - MSE: {mean_loss} - MEE: {mean_metric}')
             if self.callbacks['EarlyStopping'](self, mean_loss):
                 print(f'Early Stopped at epoch {epoch} with loss {mean_loss}')
                 break
 
-        return self
+        return self, history
+
+    # def predict_step(self, data, start = 0, steps = 7):
+    #     self.eval()
+    #     data_ = data[start:start+1, :].to(self.device)
+    #     output = []
+    #     for i in range(steps):
+    #         data_, _ = self(data_)
+    #         out_tmp = data_[0].detach().unsqueeze(0)
+    #         output.append(out_tmp[0].cpu().detach().numpy())
+    #     return np.arroutput
 
     def predict_step(self, data, start = 0, steps = 7):
         self.eval()
-        data_ = data[start:start+1, :].to(self.device)
-        output = []
+        data_ = data[start:start+steps-1, :].to(self.device)
+        tmp_out = self(data_).cpu().detach().numpy()
+        return tmp_out
+    
+    def generate_step(self, data, start = 0, steps = 7):
+        self.eval()
+        output = data[start, :].to(self.device)
         for i in range(steps):
-            data_ = self(data_)
-            out_tmp = data_[0].detach().unsqueeze(0)
-            output.append(out_tmp[0].cpu().detach().numpy())
-        return output
+            tmp_out = self(output)[-1, :].reshape(1, -1)
+            output = torch.concatenate([output, tmp_out])
+        return output.cpu().detach().numpy()

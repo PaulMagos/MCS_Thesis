@@ -6,19 +6,19 @@ import json
 import os
 # Magic
 
-# device = 'cuda' if torch.cuda.is_available() else 'mps' if torch.backends.mps.is_available() else 'cpu'
-device = 'cpu'
+device = 'cuda:1' if torch.cuda.is_available() else 'mps' if torch.backends.mps.is_available() else 'cpu'
+# device = 'cpu'
 torch.set_default_device(device)
 DATASET_NAME = 'SynteticSin'
-MODEL_NAME= 'model_GTLSTMEEG'
+MODEL_NAME= 'GTLSTM'
 # Model Parameters
-hidden_size = 256
-num_layers = 2
+hidden_size = 512
+num_layers = 1
 lr = 0.1
 dropout = 0.2
 bidirectional = True
 debug = False
-train_from_checkpoint = False
+train_from_checkpoint = True
 
 Train, Validation, Test = get_dateset(DATASET_NAME)
 
@@ -50,16 +50,16 @@ except:
     train_from_checkpoint = True
     
 if train_from_checkpoint:
-    model, history = model.train_step(train_data, train_label, 1, 25, 100)
+    model, history = model.train_step(train_data, train_label, 1, 5, 100)
     torch.save(model.state_dict(), f'./models/{MODEL_NAME}_{DATASET_NAME}')
     with open(f'./models/{MODEL_NAME}.hist', 'w') as hist:
         json.dump(history, hist)
     with open(f'./models/{MODEL_NAME}.config', 'w') as config: 
         json.dump(configs, config)
   
-output = model.predict_step(validation_data, start=0, steps=100)
+output = model.predict_step(train_data, start=0, steps=200)
 
-data_true = validation_label[0:100, :, :].numpy()
+data_true = train_label[:200, :, :].numpy()
 data_predicted = output.reshape(output.shape[0], output.shape[-1])
 data_true = data_true.reshape(data_true.shape[0], data_true.shape[-1])
 print(data_predicted.shape, data_true.shape)
@@ -76,9 +76,9 @@ for i in range(data_true.shape[-1]):
     plt.savefig(f'./PNG/{DATASET_NAME}/{MODEL_NAME}_Feature_{i}.png')
     plt.clf()
     
-output = model.generate_step(validation_data, start=0, steps=60)
+output = model.generate_step(train_data, start=0, steps=200)
 
-data_true = validation_label[0:60, :, :].numpy()
+data_true = train_label[:200, :, :].numpy()
 data_predicted = output.reshape(output.shape[0], output.shape[-1])
 data_true = data_true.reshape(data_true.shape[0], data_true.shape[-1])
 print(data_predicted.shape, data_true.shape)
@@ -98,6 +98,7 @@ for i in range(data_true.shape[-1]):
 with open(f'./models/{MODEL_NAME}.hist', 'r') as hist:
     history = json.load(hist)
     
-plt.plot(history)
+for key, values in history.items():
+    plt.plot(values, label=key)
 plt.savefig(f'./PNG/{DATASET_NAME}/{MODEL_NAME}_History.png')
 plt.clf()
