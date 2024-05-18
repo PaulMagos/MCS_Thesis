@@ -5,8 +5,8 @@ import numpy as np
 
 __all__= ['GMM', 'gmm_loss']
 
-device = 'cuda' if torch.cuda.is_available() else 'mps' if torch.backends.mps.is_available() else 'cpu'
-# device = 'cpu'
+# device = 'cuda' if torch.cuda.is_available() else 'mps' if torch.backends.mps.is_available() else 'cpu'
+device = 'cpu'
 torch.set_default_device(device)
  
 class GMM(nn.Module):
@@ -20,9 +20,9 @@ class GMM(nn.Module):
         D = X.shape[-1] // self.M - 2
         # Leave mu values as they are since they're unconstrained
         # Scale sigmas with exp, so all values are non-negative
-        X[:, D*self.M:(D+1)*self.M] = torch.exp(X[:, D*self.M:(D+1)*self.M]).to(self.device)
+        X[:, :, D*self.M:(D+1)*self.M] = torch.exp(X[:, :, D*self.M:(D+1)*self.M]).to(self.device)
         # Scale alphas with softmax, so all values are between [0,1] and sum up to 1
-        X[:, (D+1)*self.M:(D+2)*self.M] = F.softmax(X[:, (D+1)*self.M:(D+2)*self.M], dim=1).to(self.device)
+        X[:, :, (D+1)*self.M:(D+2)*self.M] = F.softmax(X[:, :, (D+1)*self.M:(D+2)*self.M], dim=1).to(self.device)
         if self.debug:
             print(X[0].shape)
         return X[0].to(self.device)

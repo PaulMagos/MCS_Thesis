@@ -1,6 +1,6 @@
 
 __all__ = ['EarlyStopping']
-
+import numpy as np
 class EarlyStopping:
     def __init__(self, patience = 10, min_delta = 1e-3) -> None:
         self.patience = patience
@@ -14,7 +14,7 @@ class EarlyStopping:
             self.min_validation_loss = validation_loss
             self.counter = 0
             self.best_weights = model.state_dict()
-        elif validation_loss > (self.min_validation_loss + self.min_delta):
+        elif np.abs(validation_loss) > (np.abs(self.min_validation_loss) + self.min_delta):
             self.counter += 1
             if self.counter >= self.patience:
                 model.load_state_dict(self.best_weights)
