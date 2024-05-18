@@ -122,10 +122,11 @@ class GTLSTM(nn.Module):
             metrics_epoch = []
             with tqdm(total=len(train_data)//batch_size+1) as pbar:
                 for i in range(0, len(train_data), batch_size):
+                    window =  i+batch_size-32 if (i+batch_size - 32 >0) else 0
                     self.optimizer.zero_grad()
-                    outputs = self(train_data[i:i+batch_size, :, :].to(self.device))
-                    loss = self.loss(train_label[i:i+batch_size, :, :].to(self.device), outputs)
-                    metric = self.metrics(train_label[i:i+batch_size, :, :].to(self.device), outputs)
+                    outputs = self(train_data[window:i+batch_size, :, :].to(self.device))
+                    loss = self.loss(train_label[window:i+batch_size, :, :].to(self.device), outputs)
+                    metric = self.metrics(train_label[window:i+batch_size, :, :].to(self.device), outputs)
                     loss.backward()
                     torch.nn.utils.clip_grad_norm_(self.parameters(), max_norm=20)
                     self.optimizer.step()
@@ -159,7 +160,8 @@ class GTLSTM(nn.Module):
         self.eval()
         output = data[start, :].to(self.device)
         for i in range(steps):
-            tmp_out = self(output)[-1, :].reshape(1, -1)
+            window =  i-32 if (i - 32 >0) else 0
+            tmp_out = self(output[window:])[-1, :].reshape(1, -1)
             output = torch.concatenate([output, tmp_out])
         return output.cpu().detach().numpy()
 
@@ -247,6 +249,7 @@ class GTR(nn.Module):
         self.eval()
         output = data[start, :].to(self.device)
         for i in range(steps):
-            tmp_out = self(output)[-1, :].reshape(1, -1)
+            window =  i-32 if (i - 32 >0) else 0
+            tmp_out = self(output[window:])[-1, :].reshape(1, -1)
             output = torch.concatenate([output, tmp_out])
         return output.cpu().detach().numpy()

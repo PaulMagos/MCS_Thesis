@@ -12,7 +12,7 @@ torch.set_default_device(device)
 DATASET_NAME = 'SynteticSin'
 MODEL_NAME= 'GTLSTM'
 # Model Parameters
-hidden_size = 512
+hidden_size = 64
 num_layers = 1
 lr = 0.1
 dropout = 0.2
@@ -50,7 +50,7 @@ except:
     train_from_checkpoint = True
     
 if train_from_checkpoint:
-    model, history = model.train_step(train_data, train_label, 1, 5, 100)
+    model, history = model.train_step(train_data, train_label, 32, 25, 100)
     torch.save(model.state_dict(), f'./models/{MODEL_NAME}_{DATASET_NAME}')
     with open(f'./models/{MODEL_NAME}.hist', 'w') as hist:
         json.dump(history, hist)
