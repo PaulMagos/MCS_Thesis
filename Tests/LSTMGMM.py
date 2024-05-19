@@ -7,10 +7,10 @@ import torch
 import numpy as np
 import os
 
-# DATASET_NAME = 'SynteticSin'
-DATASET_NAME = 'EEG'
+DATASET_NAME = 'SynteticSin'
+# DATASET_NAME = 'EEG'
 # 64 hidden
-MODEL_NAME= 'GMM32'
+MODEL_NAME= 'GMM'
 # 32 hidden
 # MODEL_NAME= 'GMM'
 
@@ -21,14 +21,14 @@ DEVICE = 'cuda:1' if torch.cuda.is_available() else 'cpu' if torch.backends.mps.
 torch.set_default_device(DEVICE)
 
 # Model Parameters 100 hidden
-hidden_size = 256
-num_layers = 2
+hidden_size = 32
+num_layers = 1
 lr = 0.001
 weight_decay = 0.001
 # weight_decay = 0
 dropout = 0
 bidirectional = True
-mixture_dim = 80
+mixture_dim = 20
 debug = False
 train_from_checkpoint = False
 
@@ -60,7 +60,7 @@ except:
     train_from_checkpoint = True
     
 if train_from_checkpoint:
-    model, history = model.train_step(train_data, train_label, 1, 100, 100)
+    model, history = model.train_step(train_data, train_label, 5, 100)
     torch.save(model.state_dict(), f'{MODELS_PATH}/{MODEL_NAME}_{DATASET_NAME}')
     with open(f'{MODELS_PATH}/{MODEL_NAME}.hist', 'w') as hist:
         json.dump(history, hist)

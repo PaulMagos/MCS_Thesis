@@ -31,7 +31,7 @@ class GTM(nn.Module):
         out_activation = gmm
         return out_activation
 
-    def train_step(self, train_data, train_label=None, batch_size=1, epochs = 1, step_log=500):
+    def train_step(self, train_data, train_label=None, epochs = 1, step_log=500):
         if train_label==None:
             train_label = train_data[1:]
             train_data = train_data[:-1]
@@ -44,8 +44,8 @@ class GTM(nn.Module):
             with tqdm(total=len(train_data) - 1) as pbar:
                 for i in range(len(train_data) - 1):
                     self.optimizer.zero_grad()
-                    outputs = self(train_data[i:i+batch_size, :, :].to(self.device))
-                    loss = self.loss(train_label[i:i+batch_size, :, :].to(self.device), outputs)
+                    outputs = self(train_data[i:i+1, :, :].to(self.device))
+                    loss = self.loss(train_label[i:i+1, :, :].to(self.device), outputs)
                     loss.backward()
                     torch.nn.utils.clip_grad_norm_(self.parameters(), max_norm=1)
                     self.optimizer.step()
