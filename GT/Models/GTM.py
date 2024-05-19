@@ -41,8 +41,8 @@ class GTM(nn.Module):
         history = {'loss': []}
         for epoch in range(1, epochs + 1):
             losses_epoch = []
-            with tqdm(total=len(train_data) - 1) as pbar:
-                for i in range(len(train_data) - 1):
+            with tqdm(total=len(train_data)) as pbar:
+                for i in range(len(train_data)):
                     self.optimizer.zero_grad()
                     outputs = self(train_data[i:i+1, :, :].to(self.device))
                     loss = self.loss(train_label[i:i+1, :, :].to(self.device), outputs)
@@ -64,7 +64,7 @@ class GTM(nn.Module):
 
         return self, history
 
-    def predict_step(self, data, start = 0, steps = 7):
+    def predict_step(self, data, start = 0, steps = 7, mode='mean'):
         M = self.gmm.M
         D = data.shape[-1]
         self.eval()
@@ -81,12 +81,16 @@ class GTM(nn.Module):
                 gmm_weights = gmm_weights.unsqueeze(-1)
                 
                 pred = gmm_weights * torch.normal(means, stds)
-                pred = torch.mean(pred, axis=1)
+                match(mode):
+                    case 'mean':
+                        pred = torch.mean(pred, axis=1)
+                    case 'sum':
+                        pred = torch.sum(pred, axis=1)
                 output = torch.concat([output, pred])
                 pbar.update(1)
         return np.array(output)
 
-    def generate_step(self, data, start = 0, steps = 7):
+    def generate_step(self, data, start = 0, steps = 7, mode='mean'):
         M = self.gmm.M
         D = data.shape[-1]
         self.eval()
@@ -105,7 +109,11 @@ class GTM(nn.Module):
                 gmm_weights = gmm_weights.unsqueeze(-1)
                 
                 pred = gmm_weights * torch.normal(means, stds)
-                pred = torch.mean(pred, axis=1)
+                match(mode):
+                    case 'mean':
+                        pred = torch.mean(pred, axis=1)
+                    case 'sum':
+                        pred = torch.sum(pred, axis=1)
                 input = pred.reshape(1, 1, -1)
                 output = torch.concat([output, pred])
                 pbar.update(1)

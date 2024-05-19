@@ -53,7 +53,7 @@ model = GTM(input_size, output_size, hidden_size, mixture_dim, dropout, num_laye
 
 configs = input_size, output_size, hidden_size, mixture_dim, dropout, num_layers, bidirectional, lr, weight_decay, ['EarlyStopping'], DEVICE, debug
 try:
-    state_dict = torch.load(f'{MODELS_PATH}/{MODEL_NAME}_{DATASET_NAME}')
+    state_dict = torch.load(f'{MODELS_PATH}/{DATASET_NAME}/{MODEL_NAME}_{DATASET_NAME}')
     model.load_state_dict(state_dict)
 except:
     print('Model not present or incompatible')
@@ -61,12 +61,13 @@ except:
     
 if train_from_checkpoint:
     model, history = model.train_step(train_data, train_label, 5, 100)
-    torch.save(model.state_dict(), f'{MODELS_PATH}/{MODEL_NAME}_{DATASET_NAME}')
-    with open(f'{MODELS_PATH}/{MODEL_NAME}.hist', 'w') as hist:
+    torch.save(model.state_dict(), f'{MODELS_PATH}/{DATASET_NAME}/{MODEL_NAME}_{DATASET_NAME}')
+    with open(f'{MODELS_PATH}/{DATASET_NAME}/{MODEL_NAME}.hist', 'w') as hist:
         json.dump(history, hist)
-    with open(f'{MODELS_PATH}/{MODEL_NAME}.config', 'w') as config: 
+    with open(f'{MODELS_PATH}/{DATASET_NAME}/{MODEL_NAME}.config', 'w') as config: 
         json.dump(configs, config)
   
+SPLIT_NAME = 'Train'
 output = model.predict_step(train_data, start=25, steps=175)
 
 data_true = train_label[25:200, :, :].numpy()
@@ -82,7 +83,7 @@ for i in range(data_true.shape[-1]):
     plt.ylabel('Values')
     plt.title(f'Line Plot of Feature {i}')
     plt.legend()
-    plt.savefig(f'{IMAGES_PATH}/{DATASET_NAME}/{MODEL_NAME}_Feature_{i}.png')
+    plt.savefig(f'{IMAGES_PATH}/{DATASET_NAME}/{SPLIT_NAME}/{MODEL_NAME}_Feature_{i}.png')
     plt.clf()
     
 output = model.generate_step(train_data, start=25, steps=175)
@@ -100,13 +101,13 @@ for i in range(data_true.shape[-1]):
     plt.ylabel('Values')
     plt.title(f'Line Plot of Feature {i}')
     plt.legend()
-    plt.savefig(f'{IMAGES_PATH}/{DATASET_NAME}/{MODEL_NAME}_Feature_{i}_GEN.png')
+    plt.savefig(f'{IMAGES_PATH}/{DATASET_NAME}/{SPLIT_NAME}/{MODEL_NAME}_Feature_{i}_GEN.png')
     plt.clf()
     
-with open(f'{MODELS_PATH}/{MODEL_NAME}.hist', 'r') as hist:
+with open(f'{MODELS_PATH}/{DATASET_NAME}/{MODEL_NAME}.hist', 'r') as hist:
     history = json.load(hist)
     
 for key, values in history.items():
     plt.plot(values, label=key)
-plt.savefig(f'{IMAGES_PATH}/{DATASET_NAME}/{MODEL_NAME}_History.png')
+plt.savefig(f'{IMAGES_PATH}/{DATASET_NAME}/History/{MODEL_NAME}_History.png')
 plt.clf()
