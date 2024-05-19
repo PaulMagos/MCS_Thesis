@@ -1,2 +1,2 @@
 from .Datasets import *
-from .NormalModels import *
+from .Models import *

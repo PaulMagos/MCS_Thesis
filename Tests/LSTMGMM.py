@@ -1,4 +1,4 @@
-from GT.Datasets import get_dataset, denormalize
+from GT import get_dataset, denormalize
 import matplotlib.pyplot as plt
 from GT import GTM
 from GT import gmm_loss

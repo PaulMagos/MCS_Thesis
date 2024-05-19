@@ -1,6 +1,6 @@
-from datasets import get_dateset
+from GT import get_dateset
 import matplotlib.pyplot as plt
-from Models import GTR
+from GT import GTR
 import torch
 import os
 import json
