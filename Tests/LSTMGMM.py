@@ -7,7 +7,8 @@ import torch
 import numpy as np
 import os
 
-DATASET_NAME = 'SynteticSin'
+# DATASET_NAME = 'SynteticSin'
+DATASET_NAME = 'EEG'
 # 64 hidden
 MODEL_NAME= 'GMM32'
 # 32 hidden
@@ -16,12 +17,12 @@ MODEL_NAME= 'GMM32'
 # Magic
 MODELS_PATH = f'{os.path.dirname(__file__)}/../models'
 IMAGES_PATH = f'{os.path.dirname(__file__)}/../PNG'
-DEVICE = 'cuda:1' if torch.cuda.is_available() else 'mps' if torch.backends.mps.is_available() else 'cpu'
+DEVICE = 'cuda:1' if torch.cuda.is_available() else 'cpu' if torch.backends.mps.is_available() else 'cpu'
 torch.set_default_device(DEVICE)
 
 # Model Parameters 100 hidden
-hidden_size = 32
-num_layers = 1
+hidden_size = 256
+num_layers = 2
 lr = 0.001
 weight_decay = 0.001
 # weight_decay = 0
