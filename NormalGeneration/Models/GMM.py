@@ -4,13 +4,10 @@ import torch
 import numpy as np
 
 __all__= ['GMM', 'gmm_loss']
-
-# device = 'cuda' if torch.cuda.is_available() else 'mps' if torch.backends.mps.is_available() else 'cpu'
-device = 'cpu'
-torch.set_default_device(device)
  
 class GMM(nn.Module):
     def __init__(self, M=10, device = 'cpu', debug=False, **kwargs) -> None:
+        torch.set_default_device(device)
         super(GMM, self).__init__()
         self.M = M
         self.device = device
