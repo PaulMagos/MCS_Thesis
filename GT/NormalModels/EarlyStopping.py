@@ -1,6 +1,5 @@
 
 __all__ = ['EarlyStopping']
-import numpy as np
 class EarlyStopping:
     def __init__(self, patience = 10, min_delta = 1e-3) -> None:
         self.patience = patience

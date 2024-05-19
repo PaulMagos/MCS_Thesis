@@ -2,7 +2,7 @@ from torch import nn
 import numpy as np
 import torch
 from tqdm import tqdm
-from Models.EarlyStopping import EarlyStopping
+from .EarlyStopping import EarlyStopping
 import torch.optim as optim
 
 torch.autograd.set_detect_anomaly(True)

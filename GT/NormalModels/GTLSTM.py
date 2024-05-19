@@ -1,6 +1,6 @@
 from torch import nn
 import torch.optim as optim
-from Models.EarlyStopping import EarlyStopping
+from .EarlyStopping import EarlyStopping
 import numpy as np
 import torch
 from tqdm import tqdm

@@ -7,8 +7,9 @@ import os
 # Magic
 
 
-MODELS_PATH = f'{os.path.dirname(__file__)}/models'
-IMAGES_PATH = f'{os.path.dirname(__file__)}/PNG'
+MODELS_PATH = f'{os.path.dirname(__file__)}/../models'
+print(MODELS_PATH)
+IMAGES_PATH = f'{os.path.dirname(__file__)}/../PNG'
 DEVICE = 'cuda:1' if torch.cuda.is_available() else 'mps' if torch.backends.mps.is_available() else 'cpu'
 # device = 'cpu'
 torch.set_default_device(DEVICE)
@@ -17,7 +18,7 @@ MODEL_NAME= 'GTLSTM'
 # Model Parameters
 hidden_size = 64
 num_layers = 1
-lr = 0.1
+lr = 0.1 
 dropout = 0
 bidirectional = True
 debug = False

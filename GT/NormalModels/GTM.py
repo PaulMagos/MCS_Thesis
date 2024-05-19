@@ -1,7 +1,7 @@
 from torch import nn
-from Models.GMM import GMM
+from .GMM import GMM
 import torch.optim as optim
-from Models.EarlyStopping import EarlyStopping
+from .EarlyStopping import EarlyStopping
 import numpy as np
 import torch
 from tqdm import tqdm
