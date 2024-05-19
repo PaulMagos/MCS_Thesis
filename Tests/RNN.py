@@ -1,4 +1,4 @@
-from GT import get_dateset
+from GT import get_dataset
 import matplotlib.pyplot as plt
 from GT import GTR
 import torch
@@ -23,7 +23,7 @@ bidirectional = True
 debug = False
 train_from_checkpoint = False
 
-Train, Validation, Test = get_dateset(DATASET_NAME)
+Train, Validation, Test = get_dataset(DATASET_NAME)
 
 train_data = torch.Tensor(Train)
 train_label = train_data
