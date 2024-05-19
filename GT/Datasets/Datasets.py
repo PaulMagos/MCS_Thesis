@@ -107,7 +107,7 @@ def get_EEG(stds_to_use: int, change: bool):
     return EEGTrain, EEGValidation, EEGTest
     
     
-def get_dateset(name='EEG', stds_to_use=10, change=True):
+def get_dataset(name='EEG', stds_to_use=10, change=True):
     match(name):
         case 'EEG':
             train, val, test = get_EEG(stds_to_use, change)
