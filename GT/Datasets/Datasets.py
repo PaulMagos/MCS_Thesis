@@ -9,28 +9,28 @@ __all__ = ['get_dataset', 'normalize', 'denormalize']
 
 base_path = f'{os.path.dirname(__file__)}/'
 
-def get_SynteticSin(stds_to_use: int, change: bool):
-    if not (os.path.exists(f'{base_path}/data/SynteticSin/train.pkl') and os.path.exists(f'{base_path}/data/SynteticSin/preprocessing.npz')):
-        data = pd.read_json(f'{base_path}/data/SynteticSin/data.json')
+def get_SynteticSin(stds_to_use: int, change: bool, version='SynteticSin'):
+    if not (os.path.exists(f'{base_path}/data/{version}/train.pkl') and os.path.exists(f'{base_path}/data/{version}/preprocessing.npz')):
+        data = pd.read_json(f'{base_path}/data/{version}/data.json')
         SinTrain, SinValidation, SinTest = \
                     np.split(data,[int(.7*len(data)), int(.9*len(data))])
-        pickle.dump(SinTrain, open(f'{base_path}/data/SynteticSin/train.pkl', 'wb'))
-        pickle.dump(SinValidation, open(f'{base_path}/data/SynteticSin/validation.pkl', 'wb'))
-        pickle.dump(SinTest, open(f'{base_path}/data/SynteticSin/test.pkl', 'wb'))            
+        pickle.dump(SinTrain, open(f'{base_path}/data/{version}/train.pkl', 'wb'))
+        pickle.dump(SinValidation, open(f'{base_path}/data/{version}/validation.pkl', 'wb'))
+        pickle.dump(SinTest, open(f'{base_path}/data/{version}/test.pkl', 'wb'))            
         means = np.mean(np.array(data[data.columns]), 0)
         stds = stds_to_use * np.std(np.array(data[data.columns]), 0)
-        np.savez(f'{base_path}/data/SynteticSin/preprocessing.npz', means=means, stds=stds, change=change)
+        np.savez(f'{base_path}/data/{version}/preprocessing.npz', means=means, stds=stds, change=change)
     else:
-        SinTrain = pickle.load(open(f'{base_path}/data/SynteticSin/train.pkl', 'rb'))
-        SinValidation = pickle.load(open(f'{base_path}/data/SynteticSin/validation.pkl', 'rb'))
-        SinTest = pickle.load(open(f'{base_path}/data/SynteticSin/test.pkl', 'rb'))
+        SinTrain = pickle.load(open(f'{base_path}/data/{version}/train.pkl', 'rb'))
+        SinValidation = pickle.load(open(f'{base_path}/data/{version}/validation.pkl', 'rb'))
+        SinTest = pickle.load(open(f'{base_path}/data/{version}/test.pkl', 'rb'))
     
-    SinTrain = normalize(name='SynteticSin', x=np.array(SinTrain[SinTrain.columns]))
-    SinValidation = normalize(name='SynteticSin', x=np.array(SinValidation[SinValidation.columns]))
-    SinTest = normalize(name='SynteticSin', x=np.array(SinTest[SinTest.columns]))
-    SinTrain = denormalize(name='SynteticSin', x=SinTrain)
-    SinValidation = denormalize(name='SynteticSin', x=SinValidation)
-    SinTest = denormalize(name='SynteticSin', x=SinTest)
+    SinTrain = normalize(name=version, x=np.array(SinTrain[SinTrain.columns]))
+    SinValidation = normalize(name=version, x=np.array(SinValidation[SinValidation.columns]))
+    SinTest = normalize(name=version, x=np.array(SinTest[SinTest.columns]))
+    SinTrain = denormalize(name=version, x=SinTrain)
+    SinValidation = denormalize(name=version, x=SinValidation)
+    SinTest = denormalize(name=version, x=SinTest)
     
     SinTrain = SinTrain.reshape(SinTrain.shape[0], 1, SinTrain.shape[-1])
     SinValidation = SinValidation.reshape(SinValidation.shape[0], 1, SinValidation.shape[-1])
@@ -115,6 +115,8 @@ def get_dataset(name='EEG', stds_to_use=10, change=True):
             train, val, test = get_Energy(stds_to_use, change)
         case 'SynteticSin':
             train, val, test = get_SynteticSin(stds_to_use, change)
+        case 'SynteticSin2':
+            train, val, test = get_SynteticSin(stds_to_use, change, version='SynteticSin2')
     
     print(f'{name} DATA')
     print_line()

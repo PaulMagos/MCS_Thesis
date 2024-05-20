@@ -18,11 +18,11 @@ class GMM(nn.Module):
         # Leave mu values as they are since they're unconstrained
         # Scale sigmas with exp, so all values are non-negative
         X[:, :, D*self.M:(D+1)*self.M] = torch.exp(X[:, :, D*self.M:(D+1)*self.M]).to(self.device)
-        # Scale alphas with softmax, so all values are between [0,1] and sum up to 1
+        # Scale alphas with softmax, so all values are between [0,1] and sum up to 1\
         X[:, :, (D+1)*self.M:(D+2)*self.M] = F.softmax(X[:, :, (D+1)*self.M:(D+2)*self.M], dim=1).to(self.device)
         if self.debug:
-            print(X[0].shape)
-        return X[0].to(self.device)
+            print(X.shape)
+        return X[0]
 
 def gmm_loss(y_true, y_pred):
     """

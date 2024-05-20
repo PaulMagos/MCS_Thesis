@@ -12,10 +12,13 @@ __all__ = ['GTM']
 class GTM(nn.Module):
     def __init__(self, input_size, output_size, hidden_size, mixture_dim, dropout, num_layers, bidirectional, loss, lr, weight_decay, callbacks, device, debug) -> None:
         super(GTM, self).__init__()
+        # LSTM Layer
         self.lstm = nn.LSTM(input_size=input_size, hidden_size=hidden_size, dropout=dropout, num_layers=num_layers, device=device, bidirectional=bidirectional)
+        self.activation1 = nn.Tanh()
+        
         self.dense = nn.Linear(in_features=hidden_size*(2 if bidirectional else 1), out_features=(output_size+2)*mixture_dim, device=device)
         self.gmm = GMM(M = mixture_dim, device = device, debug=debug)
-        self.activation1 = nn.Tanh()
+        
         self.loss = loss
         self.device = device
         self.optimizer = optim.RMSprop(self.parameters(), lr=lr, weight_decay=weight_decay)
@@ -26,6 +29,7 @@ class GTM(nn.Module):
     def forward(self, x):
         out = self.lstm(x)[0]
         activation1 = self.activation1(out)
+        activation1 = out
         dense = self.dense(activation1)
         gmm = self.gmm(dense)
         out_activation = gmm
@@ -36,6 +40,8 @@ class GTM(nn.Module):
             train_label = train_data[1:]
             train_data = train_data[:-1]
         train_label = torch.Tensor(train_label).type(torch.float32)
+        train_data = train_data.to(self.device)
+        train_label = train_label.to(self.device)
         self.train()
         print("Starting training...")
         history = {'loss': []}
@@ -44,8 +50,8 @@ class GTM(nn.Module):
             with tqdm(total=len(train_data)) as pbar:
                 for i in range(len(train_data)):
                     self.optimizer.zero_grad()
-                    outputs = self(train_data[i:i+1, :, :].to(self.device))
-                    loss = self.loss(train_label[i:i+1, :, :].to(self.device), outputs)
+                    outputs = self(train_data[i:i+1, :, :])
+                    loss = self.loss(train_label[i:i+1, :, :], outputs)
                     loss.backward()
                     torch.nn.utils.clip_grad_norm_(self.parameters(), max_norm=1)
                     self.optimizer.step()
@@ -69,12 +75,13 @@ class GTM(nn.Module):
         D = data.shape[-1]
         self.eval()
         output = torch.Tensor()
+        data = data.to(self.device)
         with tqdm(total=steps) as pbar:
             for i in range(start, start+steps):
-                data_ = self(data[i:i+1, :, :].to(self.device))
-                means = data_[:, :M*D].cpu().detach()
-                stds = data_[:, M*D : M*(D+1)].cpu().detach()
-                gmm_weights = data_[:, M*(D+1):].cpu().detach()
+                data_ = self(data[i:i+1, :, :])
+                means = data_[:, :M*D]
+                stds = data_[:, M*D : M*(D+1)]
+                gmm_weights = data_[:, M*(D+1):]
                 
                 means = means.reshape(-1, M, D)
                 stds = stds.unsqueeze(-1)
@@ -88,21 +95,22 @@ class GTM(nn.Module):
                         pred = torch.sum(pred, axis=1)
                 output = torch.concat([output, pred])
                 pbar.update(1)
-        return np.array(output)
+        
+        return np.array(output.cpu().detach())
 
     def generate_step(self, data, start = 0, steps = 7, mode='mean'):
         M = self.gmm.M
         D = data.shape[-1]
         self.eval()
         output = torch.Tensor(data[start:start+1, :, :])
-        input = output
+        input = output.to(self.device)
         output = output.reshape(1, -1)
         with tqdm(total=steps) as pbar:
             for i in range(start, start+steps):
-                data_ = self(input.to(self.device))
-                means = data_[:, :M*D].cpu().detach()
-                stds = data_[:, M*D : M*(D+1)].cpu().detach()
-                gmm_weights = data_[:, M*(D+1):].cpu().detach()
+                data_ = self(input)
+                means = data_[:, :M*D]
+                stds = data_[:, M*D : M*(D+1)]
+                gmm_weights = data_[:, M*(D+1):]
                 
                 means = means.reshape(-1, M, D)
                 stds = stds.unsqueeze(-1)
@@ -117,4 +125,4 @@ class GTM(nn.Module):
                 input = pred.reshape(1, 1, -1)
                 output = torch.concat([output, pred])
                 pbar.update(1)
-        return np.array(output)
+        return np.array(output.cpu().detach())
