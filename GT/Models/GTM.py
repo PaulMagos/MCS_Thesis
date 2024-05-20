@@ -14,9 +14,10 @@ class GTM(nn.Module):
         super(GTM, self).__init__()
         # LSTM Layer
         self.lstm = nn.LSTM(input_size=input_size, hidden_size=hidden_size, dropout=dropout, num_layers=num_layers, device=device, bidirectional=bidirectional)
-        
+        self.activation1 = nn.Tanh()
         self.dense = nn.Linear(in_features=hidden_size*(2 if bidirectional else 1), out_features=(output_size+2)*mixture_dim, device=device)
         self.gmm = GMM(M = mixture_dim, device = device, debug=debug)
+        
         self.loss = loss
         self.device = device
         self.optimizer = optim.RMSprop(self.parameters(), lr=lr, weight_decay=weight_decay)
@@ -26,7 +27,8 @@ class GTM(nn.Module):
 
     def forward(self, x):
         out = self.lstm(x)[0]
-        activation1 = out
+        activation1 = self.activation1(out)
+        # activation1 = out
         dense = self.dense(activation1)
         gmm = self.gmm(dense)
         out_activation = gmm
