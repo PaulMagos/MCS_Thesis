@@ -14,6 +14,14 @@ torch.set_default_device(DEVICE)
 DATASET_NAME = 'SynteticSin'
 MODEL_NAME= 'GTR'
 
+if not os.path.exists(MODELS_PATH):
+    os.makedirs(f'{MODELS_PATH}/{DATASET_NAME}/')
+if not os.path.exists(IMAGES_PATH):
+    os.makedirs(f'{IMAGES_PATH}/{DATASET_NAME}/History/')
+    os.makedirs(f'{IMAGES_PATH}/{DATASET_NAME}/Train')
+    os.makedirs(f'{IMAGES_PATH}/{DATASET_NAME}/Val')
+    os.makedirs(f'{IMAGES_PATH}/{DATASET_NAME}/Test')
+
 # Model Parameters
 hidden_size = 1024
 num_layers = 1

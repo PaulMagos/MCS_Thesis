@@ -20,6 +20,14 @@ IMAGES_PATH = f'{os.path.dirname(__file__)}/../PNG'
 DEVICE = 'cuda:1' if torch.cuda.is_available() else 'cpu' if torch.backends.mps.is_available() else 'cpu'
 torch.set_default_device(DEVICE)
 
+if not os.path.exists(MODELS_PATH):
+    os.makedirs(f'{MODELS_PATH}/{DATASET_NAME}/')
+if not os.path.exists(IMAGES_PATH):
+    os.makedirs(f'{IMAGES_PATH}/{DATASET_NAME}/History/')
+    os.makedirs(f'{IMAGES_PATH}/{DATASET_NAME}/Train')
+    os.makedirs(f'{IMAGES_PATH}/{DATASET_NAME}/Val')
+    os.makedirs(f'{IMAGES_PATH}/{DATASET_NAME}/Test')
+
 # Model Parameters 100 hidden
 hidden_size = 32
 num_layers = 1
