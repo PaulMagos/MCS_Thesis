@@ -9,3 +9,4 @@ PNG/*
 .DS_Store
 */.DS_Store
 *-info
+.python-version
