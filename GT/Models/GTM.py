@@ -73,7 +73,7 @@ class GTM(nn.Module):
         M = self.gmm.M
         D = data.shape[-1]
         self.eval()
-        output = torch.Tensor()
+        output = torch.Tensor().to(self.device)
         data = data.to(self.device)
         with tqdm(total=steps) as pbar:
             for i in range(start, start+steps):
@@ -92,6 +92,7 @@ class GTM(nn.Module):
                         pred = torch.mean(pred, axis=1)
                     case 'sum':
                         pred = torch.sum(pred, axis=1)
+                pred = pred.to(self.device)
                 output = torch.concat([output, pred])
                 pbar.update(1)
         
@@ -101,7 +102,7 @@ class GTM(nn.Module):
         M = self.gmm.M
         D = data.shape[-1]
         self.eval()
-        output = torch.Tensor(data[start:start+1, :, :])
+        output = torch.Tensor(data[start:start+1, :, :]).to(self.device)
         input = output.to(self.device)
         output = output.reshape(1, -1)
         with tqdm(total=steps) as pbar:
@@ -122,6 +123,7 @@ class GTM(nn.Module):
                     case 'sum':
                         pred = torch.sum(pred, axis=1)
                 input = pred.reshape(1, 1, -1)
+                pred = pred.to(self.device)
                 output = torch.concat([output, pred])
                 pbar.update(1)
         return np.array(output.cpu().detach())
