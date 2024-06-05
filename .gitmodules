@@ -1,0 +1,3 @@
+[submodule "grin_submodule"]
+	path = grin_submodule
+	url = git@github.com:Graph-Machine-Learning-Group/grin.git
