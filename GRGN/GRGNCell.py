@@ -2,10 +2,10 @@ __all__ = ['GRGNCell']
 from typing import List, Optional, Union
 import torch
 import torch.nn as nn
-from torch import LongTensor, Tensor
+from torch import Tensor
 from tsl.nn.layers.base import NodeEmbedding
 from torch_geometric.typing import Adj, OptTensor
-from tsl.nn.layers import DCRNNCell, DenseDCRNNCell
+from tsl.nn.layers import DCRNNCell
 from tsl.nn.layers.recurrent.grin import SpatialDecoder
 
 class GRGNCell(nn.Module):
@@ -15,6 +15,7 @@ class GRGNCell(nn.Module):
                     n_layers: int = 1,
                     n_nodes: Optional[int] = None,
                     kernel_size: int = 2,
+                    mixture_dimension: int = 20,
                     dense_convolution: bool = False,
                     decoder_order: int = 1,
                     layer_norm: bool = False,
@@ -28,9 +29,10 @@ class GRGNCell(nn.Module):
         self._n_layers = n_layers
         self._kernel_size = kernel_size
         self._dense_convolution  = dense_convolution
+        self.M = mixture_dimension
         
         rnn_input_size = 2 * self._input_size 
-                
+                 
         self.cells = nn.ModuleList()
         self.norms = nn.ModuleList()
         
@@ -90,16 +92,15 @@ class GRGNCell(nn.Module):
                 x: Tensor,
                 edge_index: Adj,
                 edge_weight: OptTensor = None,
-                mask: OptTensor = None,
                 u: OptTensor = None,
                 h: Union[List[Tensor], Tensor] = None):
         """"""
         # x: [batch, steps, nodes, channels]
         steps = x.size(1)
-
+        
+        # We don't require a mask we want to generate everything.
         # infer all valid if mask is None
-        if mask is None:
-            mask = torch.ones_like(x, dtype=torch.uint8)
+        mask = torch.zeros_like(x, dtype=torch.uint8)
 
         # init hidden state using node embedding or the empty state
         if h is None:
@@ -108,7 +109,7 @@ class GRGNCell(nn.Module):
             h = [*h]
 
         # Temporal conv
-        predictions, imputations, states = [], [], []
+        predictions, generations, states = [], [], []
         representations = []
         for step in range(steps):
             x_s = x[:, step]
@@ -118,7 +119,8 @@ class GRGNCell(nn.Module):
             # firstly impute missing values with predictions from state
             xs_hat_1 = self.first_stage(h_s)
             # fill missing values in input with prediction
-            x_s = torch.where(m_s.bool(), x_s, xs_hat_1)
+            # x_s = torch.where(m_s.bool(), x_s, xs_hat_1)
+            x_s = xs_hat_1
             # prepare inputs
             # retrieve maximum information from neighbors
             xs_hat_2, repr_s = self.spatial_decoder(x_s,
@@ -127,25 +129,26 @@ class GRGNCell(nn.Module):
                                                     u=u_s,
                                                     edge_index=edge_index,
                                                     edge_weight=edge_weight)
-            # readout of imputation state + mask to retrieve imputations
+            # readout of generation state + mask to retrieve imputations
             # prepare inputs
-            x_s = torch.where(m_s.bool(), x_s, xs_hat_2)
+            # x_s = torch.where(m_s.bool(), x_s, xs_hat_2)
+            x_s = xs_hat_2
             inputs = [x_s, m_s]
             if u_s is not None:
                 inputs.append(u_s)
             inputs = torch.cat(inputs, dim=-1)  # x_hat_2 + mask + exogenous
-            # update state with original sequence filled using imputations
+            # update state with original sequence filled using generations
             h = self.update_state(inputs, h, edge_index, edge_weight)
-            # store imputations and states
-            imputations.append(xs_hat_2)
+            # store generations and states
+            generations.append(xs_hat_2)
             predictions.append(xs_hat_1)
             states.append(torch.stack(h, dim=0))
             representations.append(repr_s)
 
         # Aggregate outputs -> [batch, steps, nodes, channels]
-        imputations = torch.stack(imputations, dim=1)
+        generations = torch.stack(generations, dim=1)
         predictions = torch.stack(predictions, dim=1)
         states = torch.stack(states, dim=2)
         representations = torch.stack(representations, dim=1)
 
-        return imputations, predictions, representations, states
+        return generations, predictions, representations, states
