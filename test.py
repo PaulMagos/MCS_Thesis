@@ -5,16 +5,16 @@ from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint
 from pytorch_lightning.loggers import TensorBoardLogger, WandbLogger
 
 from tsl import logger
-from tsl.data import ImputationDataset, SpatioTemporalDataModule
+from tsl.data import SpatioTemporalDataset, SpatioTemporalDataModule
 from tsl.data.preprocessing import StandardScaler
 from tsl.datasets import AirQuality, MetrLA, PemsBay
-from tsl.engines import Imputer
+from GRGN.Engines.Generator import Generator
 from tsl.experiment import Experiment
 from tsl.metrics import numpy as numpy_metrics
 from tsl.metrics import torch as torch_metrics
-from tsl.nn.models import GRINModel
+from GRGN.GRGNModel import GRGNModel
+from GRGN.Loss.LogLikelihood import LogLikelihood
 from tsl.ops.imputation import add_missing_values
-from tsl.transforms import MaskInput
 from tsl.utils.casting import torch_to_numpy
 
 def run_imputation():
@@ -23,13 +23,6 @@ def run_imputation():
     ########################################
     dataset = MetrLA()
     
-    dataset = add_missing_values(MetrLA(),
-                                  p_fault=0.0015,
-                                  p_noise=0.05,
-                                  min_seq=12,
-                                  max_seq=12 * 4,
-                                  seed=9101112)
-
     # encode time of the day and use it as exogenous variable
     # covariates = {'u': dataset.datetime_encoded('day').values}
     covariates = None
@@ -42,33 +35,20 @@ def run_imputation():
     })
 
     
-    # mymask = torch.full((34272, 207, 1), True, dtype=torch.bool)
-    
-    shape = (34272, 207, 1)
-
-    # Create a tensor with random values between 0 and 1
-    random_tensor = torch.rand(shape)
-
-    # Create a tensor of boolean values where each element is True with a probability of 2%
-    mymask = random_tensor < 0.10
-
     # instantiate dataset
-    torch_dataset = ImputationDataset(target=dataset.dataframe(),
-                                      mask=mymask,
-                                      eval_mask=mymask,
+    torch_dataset = SpatioTemporalDataset(target=dataset.dataframe(),
                                       covariates=covariates,
-                                      transform=MaskInput(),
                                       connectivity=adj,
-                                      window=24,
+                                      window=1,
                                       stride=1)
 
     scalers = {'target': StandardScaler(axis=(0, 1))}
     dm = SpatioTemporalDataModule(
         dataset=torch_dataset,
         scalers=scalers,
-        splitter=dataset.get_splitter(**{'val_len': 0.1, 'test_len': 0.2}),
-        batch_size=128,
-        workers=128)
+        splitter=dataset.get_splitter(**{'val_len': 0.2, 'test_len': 0.1}),
+        batch_size=32,
+        workers=143)
     dm.setup(stage='fit')
 
     # if cfg.get('in_sample', False):
@@ -78,7 +58,7 @@ def run_imputation():
     # imputer                              #
     ########################################
 
-    model_cls = GRINModel
+    model_cls = GRGNModel
 
     model_kwargs = dict(n_nodes=torch_dataset.n_nodes,
                         input_size=torch_dataset.n_channels,)
@@ -86,87 +66,81 @@ def run_imputation():
     
 
     model_cls.filter_model_args_(model_kwargs)
-    model_kwargs.update({'hidden_size': 64,
+    model_kwargs.update({'hidden_size': 256,
     'ff_size': 64,
     'embedding_size': 8,
     'n_layers': 1,
     'kernel_size': 2,
     'decoder_order': 1,
     'layer_norm': False,
-    'dropout': 0,
+    'dropout': 0.1,
     'ff_dropout': 0,
-    'merge_mode': 'mlp'})
+    'merge_mode': 'mean'})
 
-    loss_fn = torch_metrics.MaskedMAE()
+    loss_fn = LogLikelihood()
 
     log_metrics = {
-        'mae': torch_metrics.MaskedMAE(),
-        'mse': torch_metrics.MaskedMSE(),
-        'mre': torch_metrics.MaskedMRE(),
-        'mape': torch_metrics.MaskedMAPE()
+        'Log Likelihood': LogLikelihood(),
+        '1Stage LL': LogLikelihood(False),
     }
 
     scheduler_class = getattr(torch.optim.lr_scheduler, 'CosineAnnealingLR')
     scheduler_kwargs = {'eta_min': 0.0001, 'T_max': 300}
 
     # setup imputer
-    imputer = Imputer(model_class=model_cls,
+    generator = Generator(model_class=model_cls,
                       model_kwargs=model_kwargs,
                       optim_class=getattr(torch.optim, 'Adam'),
-                      optim_kwargs={'lr': 0.001, 'weight_decay': 0},
+                      optim_kwargs={'lr': 0.001, 'weight_decay': 0.01},
                       loss_fn=loss_fn,
                       metrics=log_metrics,
                       scheduler_class=scheduler_class,
                       scheduler_kwargs=scheduler_kwargs,
-                      scale_target=True,
-                      whiten_prob=0.05,
-                      prediction_loss_weight=1.0,
-                      impute_only_missing=False,
-                      warm_up_steps=0)
+                      scale_target=True)
 
     ########################################
     # logging options                      #
     ########################################
-    exp_logger = TensorBoardLogger(save_dir=f'logs/imputation/grin/',
+    exp_logger = TensorBoardLogger(save_dir=f'logs/generation/grgn/',
                                        name='tensorboard')
 
     ########################################
     # training                             #
     ########################################
 
-    early_stop_callback = EarlyStopping(monitor='val_mae',
+    early_stop_callback = EarlyStopping(monitor='val_loss',
                                         patience=50,
-                                        mode='min')
+                                        mode='max')
 
     checkpoint_callback = ModelCheckpoint(
-        dirpath='logs/imputation/grin/',
+        dirpath='logs/generation/grgn/',
         save_top_k=1,
-        monitor='val_mae',
-        mode='min',
+        monitor='val_loss',
+        mode='max',
     )
 
     trainer = Trainer(
         max_epochs=300,
-        default_root_dir='logs/imputation/grin/',
+        default_root_dir='logs/generation/grgn/',
         logger=exp_logger,
         accelerator='gpu' if torch.cuda.is_available() else 'cpu',
         devices=1,
         gradient_clip_val=5,
         callbacks=[early_stop_callback, checkpoint_callback])
 
-    trainer.fit(imputer, datamodule=dm)
+    trainer.fit(generator, datamodule=dm)
 
     ########################################
     # testing                              #
     ########################################
 
-    imputer.load_model(checkpoint_callback.best_model_path)
+    generator.load_model(checkpoint_callback.best_model_path)
 
-    imputer.freeze()
-    trainer.test(imputer, datamodule=dm)
+    generator.freeze()
+    trainer.test(generator, datamodule=dm)
 
-    output = trainer.predict(imputer, dataloaders=dm.test_dataloader())
-    output = imputer.collate_prediction_outputs(output)
+    output = trainer.predict(generator, dataloaders=dm.test_dataloader())
+    output = generator.collate_prediction_outputs(output)
     output = torch_to_numpy(output)
     y_hat, y_true, mask = (output['y_hat'], output['y'],
                            output.get('eval_mask', None))
@@ -174,8 +148,8 @@ def run_imputation():
                test_mre=numpy_metrics.mre(y_hat, y_true, mask),
                test_mape=numpy_metrics.mape(y_hat, y_true, mask))
 
-    output = trainer.predict(imputer, dataloaders=dm.val_dataloader())
-    output = imputer.collate_prediction_outputs(output)
+    output = trainer.predict(generator, dataloaders=dm.val_dataloader())
+    output = generator.collate_prediction_outputs(output)
     output = torch_to_numpy(output)
     y_hat, y_true, mask = (output['y_hat'], output['y'],
                            output.get('eval_mask', None))
