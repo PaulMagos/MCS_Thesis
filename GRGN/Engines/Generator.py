@@ -317,7 +317,6 @@ class Generator(pl.LightningModule):
     def training_step(self, batch, batch_idx):
         """"""
         y = y_loss = batch.y
-        mask = batch.get('mask')
 
         # Compute predictions and compute loss
         y_hat_loss = self.predict_batch(batch,
@@ -342,7 +341,6 @@ class Generator(pl.LightningModule):
     def validation_step(self, batch, batch_idx):
         """"""
         y = y_loss = batch.y
-        mask = batch.get('mask')
 
         # Compute predictions
         y_hat_loss = self.predict_batch(batch,
@@ -369,7 +367,7 @@ class Generator(pl.LightningModule):
         # Compute outputs and rescale
         y_hat = self.predict_batch(batch, preprocess=False, postprocess=True)
 
-        y, mask = batch.y, batch.get('mask')
+        y = batch.y
         test_loss = self.loss_fn(y_hat, y)
 
         # Logging
@@ -382,7 +380,7 @@ class Generator(pl.LightningModule):
         """"""
         # Compute outputs and rescale
         y_hat = self.predict_batch(batch, preprocess, postprocess)
-        y, mask = batch.y, batch.get('mask')
+        y = batch.y
         self.test_metrics.update(y_hat.detach(), y)
         metrics_dict = self.test_metrics.compute()
         self.test_metrics.reset()

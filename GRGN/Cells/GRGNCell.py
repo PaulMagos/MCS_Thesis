@@ -22,6 +22,8 @@ class GRGNCell(Module):
                  layer_norm: bool = False,
                  dropout: float = 0.):
         super(GRGNCell, self).__init__()
+        
+        # Cell parameters
         self.input_size = input_size
         self.hidden_size = hidden_size
         self.u_size = exog_size
@@ -29,13 +31,14 @@ class GRGNCell(Module):
         self.mixture_size = mixture_size
         self.kernel_size = kernel_size
         
+        # Dimension of the output of first stage (input of second stage) + imput dimension
         rnn_input_size = self.input_size + (input_size + 2) * mixture_size + hidden_size
         
         self.cells = ModuleList()
         self.norms = ModuleList()
         
-        print(rnn_input_size)
         
+        # First Stage - Spatio Temporal Encoder
         for i in range(self.n_layers):
             in_channels = rnn_input_size if i == 0 else hidden_size
             cell = DCGRNNNCell(input_size=in_channels,
@@ -46,10 +49,13 @@ class GRGNCell(Module):
             norm = LayerNorm(self.hidden_size) if layer_norm else Identity()
             self.norms.append(norm)
             
+        # Dropout for for first stage hidden state
         self.dropout = Dropout(dropout) if dropout > 0 else None
         
+        # First Stage - Mixture Density Model
         self.first_stage = GMMCell(input_size, hidden_size, mixture_size)
         
+        # Second Stage - Spatial Decoder Mixture Density Model
         self.spatial_decoder = SpatialDecoderGMM(input_size=input_size,
                                               hidden_size=hidden_size,
                                               exog_size=exog_size,
@@ -67,17 +73,23 @@ class GRGNCell(Module):
                            
     def update_state(self, x, h, edge_index, edge_weight):
         # x: [batch, nodes, channels]
-        rnn_in = x
+        rnn_in = x\
+            
+        # Update hidden state for each cell, normalizing output
         for layer, (cell, norm) in enumerate(zip(self.cells, self.norms)):
+            # Pass input to cell, or pass hidden state from previous layer
             tmp_out = cell(rnn_in, h[layer], edge_index, edge_weight)
+            # Normlize output of cell
             h[layer] = norm(tmp_out)
             rnn_in = h[layer]
+            # Apply dropout if necessary
             if self.dropout is not None and layer < (self.n_layers - 1):
                 rnn_in = self.dropout(rnn_in)
         return h
                            
                            
     def get_h0(self, x):
+        # Initialize hidden state
         if self.h0 is not None:
             return [h(expand=(x.shape[0], -1, -1)) for h in self.h0]
         size = (self.n_layers, x.shape[0], x.shape[2], self.hidden_size)
@@ -117,7 +129,7 @@ class GRGNCell(Module):
                                                     u=u_s,
                                                     edge_index=edge_index,
                                                     edge_weight=edge_weight)
-            # readout of imputation state + mask to retrieve generations
+            # readout of imputation state 
             # prepare inputs
             inputs = xs_hat_2
             if u_s is not None:

@@ -26,8 +26,10 @@ class SpatialDecoderGMM(Module):
         self.exog_size = exog_size
         self.order = order
 
+        # Input channels of convolution
         in_channels = input_size + (input_size + 2) * num_components + hidden_size 
         
+        # 
         self.lin_in = Linear(in_channels, hidden_size)
         
         self.graph_conv = DiffConv(in_channels=hidden_size,
@@ -37,7 +39,7 @@ class SpatialDecoderGMM(Module):
         
         self.gmm = GMMCell(input_size, 2 * hidden_size, num_components)
         
-        self.activation = PReLU()
+        # self.activation = PReLU()
         
     def __repr__(self):
         attrs = ['input_size', 'hidden_size', 'output_size', 'order', 'num_components']
@@ -89,5 +91,5 @@ class SpatialDecoderGMM(Module):
         out1 = torch.cat([out, h], dim=-1)
         out = self.gmm(out1)
         out = torch.cat([out, h], dim=-1)
-        out = self.activation(out)
+        # out = self.activation(out)
         return out, out1
