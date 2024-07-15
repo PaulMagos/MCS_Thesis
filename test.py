@@ -145,19 +145,19 @@ def run_imputation(model_params, optim, optim_params, batch_size):
 
 if __name__ == '__main__':
     model_params = {
-        'hidden_size': 64,
-        'embedding_size': 8,
+        'hidden_size': 32,
+        'embedding_size': 16,
         'n_layers': 1,
         'kernel_size': 2,
         'decoder_order': 1,
-        'layer_norm': False,
-        'dropout': 0.1,
+        'layer_norm': True,
+        'dropout': 0.05,
     }
-    optim_params = {'lr': 0.001, 'weight_decay': 0.01}
+    optim_params = {'lr': 0.00001, 'weight_decay': 0.01}
     
     optim = 'RMSprop' # SGD or Adam
     
-    batch_size = 32
+    batch_size = 2
     
     res = run_imputation(model_params, optim, optim_params, batch_size)
 
