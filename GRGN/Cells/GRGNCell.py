@@ -32,7 +32,7 @@ class GRGNCell(Module):
         self.kernel_size = kernel_size
         
         # Dimension of the output of first stage (input of second stage) + imput dimension
-        rnn_input_size = self.input_size + (input_size + 2) * mixture_size + hidden_size
+        rnn_input_size = self.input_size + ((input_size + 2) * mixture_size) + hidden_size
         
         self.cells = ModuleList()
         self.norms = ModuleList()
@@ -120,7 +120,7 @@ class GRGNCell(Module):
             x_s = x[:, step]
             h_s = h[-1]
             u_s = u[:, step] if u is not None else None
-            # firstly generate gaussians means, stds from state
+            # first generate gaussians means, stds from state
             xs_hat_1 = self.first_stage(h_s)
             # retrieve maximum information from neighbors
             xs_hat_2, repr_s = self.spatial_decoder(x=x_s,
@@ -129,12 +129,12 @@ class GRGNCell(Module):
                                                     u=u_s,
                                                     edge_index=edge_index,
                                                     edge_weight=edge_weight)
-            # readout of imputation state 
+            # readout of generation state 
             # prepare inputs
             inputs = xs_hat_2
             if u_s is not None:
                 inputs.append(u_s)
-                inputs = torch.cat(inputs, dim=-1)  # x_hat_2 + mask + exogenous
+                inputs = torch.cat(inputs, dim=-1)  # x_hat_2 + exogenous
             # update state with original sequence filled using generations
             h = self.update_state(inputs, h, edge_index, edge_weight)
             # store generations and states

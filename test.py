@@ -105,6 +105,7 @@ def run_imputation(model_params, optim, optim_params, batch_size):
 
     checkpoint_callback = ModelCheckpoint(
         dirpath='logs/generation/grgn/',
+        filename='best-model-{epoch:02d}-{val_loss:.4f}',
         save_top_k=1,
         monitor='val_loss',
         mode='min',
@@ -157,7 +158,7 @@ if __name__ == '__main__':
     
     optim = 'RMSprop' # SGD or Adam
     
-    batch_size = 2
+    batch_size = 1
     
     res = run_imputation(model_params, optim, optim_params, batch_size)
 
