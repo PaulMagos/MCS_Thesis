@@ -111,7 +111,7 @@ class GRGNModel(BaseModel):
         
         return pred
     
-    def generation(self,
+    def generate(self,
                    X: Tensor,
                    edge_index: Adj,
                    edge_weight: OptTensor = None,

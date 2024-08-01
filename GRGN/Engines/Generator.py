@@ -171,9 +171,16 @@ class Generator(pl.LightningModule):
             kwargs = self._filter_forward_kwargs(kwargs)
         return self.model(*args, **kwargs)
 
+    def generate(self, *args, **kwargs):
+        """"""
+        generate_fn = self.model.generate
+        if self.filter_forward_kwargs:
+            kwargs = self._filter_forward_kwargs(kwargs)
+        return generate_fn(*args, **kwargs)
+    
     def predict(self, *args, **kwargs):
         """"""
-        predict_fn = self.model.predict if self.is_tsl_model else self.model
+        predict_fn = self.model.predict
         if self.filter_forward_kwargs:
             kwargs = self._filter_forward_kwargs(kwargs)
         return predict_fn(*args, **kwargs)
