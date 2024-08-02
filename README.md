@@ -8,4 +8,8 @@ https://github.com/tonyduan/mixture-density-network/blob/master/README.md
 
 
 Maximum Mean Discrepancy
-Call with Bacciu
+Compare with RNN Generative Model
+Train GRIN for Forecasting
+Anomaly Detectio (Swap two nodes)
+Diversity Experiment
+
