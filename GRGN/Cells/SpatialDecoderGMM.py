@@ -71,6 +71,7 @@ class SpatialDecoderGMM(Module):
                 edge_weight: OptTensor = None, 
                 u: OptTensor = None
                 ):
+        print(x.shape, x_hat_1.shape, h.shape)
         x_in = [x, x_hat_1, h]
         if u is not None:
             x_in += [u]
