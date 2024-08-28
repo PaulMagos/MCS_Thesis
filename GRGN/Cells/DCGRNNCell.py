@@ -23,19 +23,19 @@ class DCGRNNNCell(GraphGRUCellBase):
                  add_backward: bool = True,
                  bias: bool = True):
         # instantiate gates
-        forget_gate = DiffConv(input_size + hidden_size ,
+        forget_gate = DiffConv(input_size + hidden_size - 1,
                                hidden_size,
                                k=k,
                                root_weight=root_weight,
                                add_backward=add_backward,
                                bias=bias)
-        update_gate = DiffConv(input_size + hidden_size,
+        update_gate = DiffConv(input_size + hidden_size - 1,
                                hidden_size,
                                k=k,
                                root_weight=root_weight,
                                add_backward=add_backward,
                                bias=bias)
-        candidate_gate = DiffConv(input_size + hidden_size,
+        candidate_gate = DiffConv(input_size + hidden_size - 1,
                                   hidden_size,
                                   k=k,
                                   root_weight=root_weight,
