@@ -105,9 +105,40 @@ def get_EEG(stds_to_use: int, change: bool):
     EEGValidation = EEGValidation.reshape(EEGValidation.shape[0], 1, EEGValidation.shape[-1])
     EEGTest = EEGTest.reshape(EEGTest.shape[0], 1, EEGTest.shape[-1])
     return EEGTrain, EEGValidation, EEGTest
+
+def split_data(name, dataset, stds_to_use):
+    if not (os.path.exists(f'{base_path}/data/{name}/train.pkl') and os.path.exists(f'{base_path}/data/{name}/preprocessing.npz')):
+        Train, Validation, Test = \
+                    np.split(dataset, [int(.7*len(dataset)), int(.9*len(dataset))])
+                    
+        Train = np.array(Train)
+        Validation = np.array(Validation)
+        Test = np.array(Test)
+                    
+        pickle.dump(Train, open(f'{base_path}/data/{name}/train.pkl', 'wb'))
+        pickle.dump(Validation, open(f'{base_path}/data/{name}/validation.pkl', 'wb'))
+        pickle.dump(Test, open(f'{base_path}/data/{name}/test.pkl', 'wb'))
+        means = np.mean(dataset, 0)
+        stds = stds_to_use * np.std(dataset, 0)
+        np.savez(f'{base_path}/data/{name}/preprocessing.npz', means=means, stds=stds, change=True)    
+    else:
+        Train = pickle.load(open(f'{base_path}/data/{name}/train.pkl', 'rb'))
+        Validation = pickle.load(open(f'{base_path}/data/{name}/validation.pkl', 'rb'))
+        Test = pickle.load(open(f'{base_path}/data/{name}/test.pkl', 'rb'))
+        
+        
+    Train = normalize(name=name, x=np.array(Train))
+    Validation = normalize(name=name, x=np.array(Validation))
+    Test = normalize(name=name, x=np.array(Test))
+    
+    Train = Train.reshape(Train.shape[0], 1, Train.shape[-1])
+    Validation = Validation.reshape(Validation.shape[0], 1, Validation.shape[-1])
+    Test = Test.reshape(Test.shape[0], 1, Test.shape[-1])
+    return Train, Validation, Test
     
     
-def get_dataset(name='EEG', stds_to_use=10, change=True):
+    
+def get_dataset(name='EEG', dataset=None, stds_to_use=10, change=True):
     match(name):
         case 'EEG':
             train, val, test = get_EEG(stds_to_use, change)
@@ -117,6 +148,8 @@ def get_dataset(name='EEG', stds_to_use=10, change=True):
             train, val, test = get_SynteticSin(stds_to_use, change)
         case 'SynteticSin2':
             train, val, test = get_SynteticSin(stds_to_use, change, version='SynteticSin2')
+        case _:
+            train, val, test = split_data(name, dataset, stds_to_use)
     
     print(f'{name} DATA')
     print_line()
