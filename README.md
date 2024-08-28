@@ -13,10 +13,11 @@ Diversity Experiment
 ONGOING
 ##################################
 Maximum Mean Discrepancy
+Compare with RNN Generative Model
 
 
 DONE
 ##################################
 Train GRIN for Forecasting
 Anomaly Detection (Swap two nodes)
-Compare with RNN Generative Model
+Train RNN Generative Model
