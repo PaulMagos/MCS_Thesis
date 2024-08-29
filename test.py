@@ -87,7 +87,7 @@ def run_imputation(model_params, optim, optim_params, batch_size):
                       metrics=log_metrics,
                       scheduler_class=scheduler_class,
                       scheduler_kwargs=scheduler_kwargs,
-                      scale_target=True)
+                      scale_target=False)
 
     ########################################
     # logging options                      #
@@ -147,7 +147,7 @@ def run_imputation(model_params, optim, optim_params, batch_size):
 if __name__ == '__main__':
     model_params = {
         'hidden_size': 32,
-        'embedding_size': 16,
+        'embedding_size': 32,
         'n_layers': 1,
         'kernel_size': 2,
         'decoder_order': 1,
