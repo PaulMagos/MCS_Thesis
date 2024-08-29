@@ -103,7 +103,7 @@ class GRGNCell(Module):
                 u: OptTensor = None,
                 h: Union[List[Tensor], Tensor] = None):
         """"""
-        print(x.shape)
+        # print(x.shape)
         # x: [batch, steps, nodes, channels]
         steps = x.size(1)
 
