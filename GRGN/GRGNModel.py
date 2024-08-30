@@ -91,7 +91,6 @@ class GRGNModel(BaseModel):
                 x: Tensor,
                 edge_index: Adj,
                 edge_weight: OptTensor = None,
-                scaler = None,
                 u: OptTensor = None) -> Tensor:
         """"""
         out = self.forward(x=x,
@@ -100,7 +99,6 @@ class GRGNModel(BaseModel):
                             edge_weight=edge_weight)
         
         out = out[..., (self.input_size + 2) * self.M:]
-        out = scaler.transorm(out)
         D = out.shape[-1] // self.M - 2
         
         means = out[:, :, :self.M*D]
@@ -108,7 +106,7 @@ class GRGNModel(BaseModel):
         weights = out[:, :, self.M*(D+1):]
         
         pred = weights * torch.normal(means, stds)
-        pred = torch.sum(pred, dim=-1)
+        pred = torch.mean(pred, dim=-1)
         
         return pred
     
@@ -116,7 +114,6 @@ class GRGNModel(BaseModel):
                    X: Tensor,
                    edge_index: Adj,
                    edge_weight: OptTensor = None,
-                   scaler = None,
                    u: OptTensor = None,
                    steps: int= 32) -> Tensor:
     
@@ -130,7 +127,6 @@ class GRGNModel(BaseModel):
         
         output = None
         for i in range(steps):
-            out = scaler.transform(out) if scaler is not None else out
             D = out.shape[-1] // self.M - 2
             
             means = out[..., :self.M*D]
@@ -138,8 +134,7 @@ class GRGNModel(BaseModel):
             weights = out[..., self.M*(D+1):]
             
             gen = weights * torch.normal(means, stds)
-            gen = torch.sum(gen, dim=-1)
-            gen = scaler.inverse_transform(gen) if scaler is not None else gen
+            gen = torch.mean(gen, dim=-1)
             nextval = gen.reshape(1, 1, gen.shape[-1], 1)
             print("gen", gen.shape, nextval.shape)
             output = [gen] if output is None else output.append(gen)
