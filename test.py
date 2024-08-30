@@ -21,7 +21,7 @@ def run_imputation(model_params, optim, optim_params, batch_size):
     ########################################
     # data module                          #
     ########################################
-    dataset = PemsBay()
+    dataset = MetrLA()
     
     # encode time of the day and use it as exogenous variable
     # covariates = {'u': dataset.datetime_encoded('day').values}
