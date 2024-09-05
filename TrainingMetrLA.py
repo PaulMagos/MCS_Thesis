@@ -36,7 +36,7 @@ def run_imputation(model_params, optim, optim_params, batch_size):
 
     
     # instantiate dataset
-    torch_dataset = SpatioTemporalDataset(target=dataset.dataframe()[-5000:],
+    torch_dataset = SpatioTemporalDataset(target=dataset.dataframe()[-10000:],
                                       covariates=covariates,
                                       connectivity=adj,
                                       window=1,
@@ -146,8 +146,8 @@ def run_imputation(model_params, optim, optim_params, batch_size):
 
 if __name__ == '__main__':
     model_params = {
-        'hidden_size': 32,
-        'embedding_size': 32,
+        'hidden_size': 128,
+        'embedding_size': 16,
         'n_layers': 1,
         'kernel_size': 2,
         'decoder_order': 1,
