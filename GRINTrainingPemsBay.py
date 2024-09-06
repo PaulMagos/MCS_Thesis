@@ -93,7 +93,7 @@ def run_imputation(model_params, optim, optim_params, batch_size):
     ########################################
     # logging options                      #
     ########################################
-    exp_logger = TensorBoardLogger(save_dir=f'logs/generation/grin/',
+    exp_logger = TensorBoardLogger(save_dir=f'logs/generation/grinPems/',
                                        name='tensorboard')
 
     ########################################
@@ -105,7 +105,7 @@ def run_imputation(model_params, optim, optim_params, batch_size):
                                         mode='min')
 
     checkpoint_callback = ModelCheckpoint(
-        dirpath='logs/prediction/grin/',
+        dirpath='logs/prediction/grinPems/',
         filename='best-model-{epoch:02d}-{val_loss:.4f}',
         save_top_k=1,
         monitor='val_mae',
@@ -114,7 +114,7 @@ def run_imputation(model_params, optim, optim_params, batch_size):
 
     trainer = Trainer(
         max_epochs=500,
-        default_root_dir='logs/prediction/grin/',
+        default_root_dir='logs/prediction/grinPems/',
         logger=exp_logger,
         accelerator='gpu' if torch.cuda.is_available() else 'cpu',
         devices=1,
