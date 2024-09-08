@@ -5,6 +5,7 @@ from tsl.nn.models import BaseModel
 from tsl.nn.layers import NodeEmbedding
 from torch_geometric.typing import Adj, OptTensor
 from .Cells import GRGNCell
+from GRGN.Utils.reshapes import reshape_to_original
 from torch.nn import Linear, Sequential, ReLU, Dropout
 
 class GRGNModel(BaseModel):
@@ -85,12 +86,13 @@ class GRGNModel(BaseModel):
         prediction = torch.stack([fwd_pred, bwd_pred], dim=-1)
         prediction = self.out(prediction, dim=-1)
 
-        return torch.cat([generation[..., :(self.input_size + 2) * self.M], prediction], dim=-1)
+        return torch.cat([prediction, generation], dim=-1)
     
     def predict(self,
                 x: Tensor,
                 edge_index: Adj,
                 edge_weight: OptTensor = None,
+                method: str = 'mean',
                 u: OptTensor = None, 
                 first_part=False) -> Tensor:
         """"""
@@ -104,17 +106,24 @@ class GRGNModel(BaseModel):
         else:
             out1 = out[..., :(self.input_size + 2) * self.M]
             
-        D = out1.shape[-1] // self.M - 2
-        
-        means = out1[..., :self.M*D]
-        stds  = out1[..., self.M*D:self.M * (D+1)]
-        weights = out1[..., self.M*(D+1):]
+        D = x.shape[-1]
+        M = out1.shape[-1] // (D+2)
+        out1 = reshape_to_original(out1, x.shape[-2], D, M)
+        D = x.shape[-1] * x.shape[-2]
+    
+        means = out1[..., :self.M*D].reshape(-1, M, D)
+        stds  = out1[..., self.M*D:self.M * (D+1)].unsqueeze(-1)
+        weights = out1[..., self.M*(D+1):].unsqueeze(-1)
         means = torch.where(torch.isnan(means) | torch.isinf(means), torch.zeros_like(means), means).to(means.device)
         stds = torch.where(torch.isnan(stds) | torch.isinf(stds), torch.zeros_like(stds), stds).to(stds.device)
         weights = torch.where(torch.isnan(weights) | torch.isinf(weights), torch.zeros_like(weights), weights).to(weights.device)
             
         pred = weights * torch.normal(means, stds)
-        pred = torch.mean(pred, dim=-1)
+        match(method):
+            case 'mean':
+                pred = torch.mean(pred, axis=1)
+            case 'sum':
+                pred = torch.sum(pred, axis=1)
         
         return pred, out
     
@@ -123,8 +132,10 @@ class GRGNModel(BaseModel):
                    edge_index: Adj,
                    edge_weight: OptTensor = None,
                    u: OptTensor = None,
-                   steps: int= 32, 
-                   first_part=False) -> Tensor:
+                   method: str = 'mean',
+                   steps: int = 32, 
+                   first_part = False
+                   ) -> Tensor:
     
         nextval = X
         output = []
@@ -141,18 +152,26 @@ class GRGNModel(BaseModel):
             else:
                 out1 = out[..., :(self.input_size + 2) * self.M]
             
-            D = out1.shape[-1] // self.M - 2
+            D = X.shape[-1]
+            M = out1.shape[-1] // (D+2)
+            out1 = reshape_to_original(out1, X.shape[-2], D, M)
+            D = X.shape[-1] * X.shape[-2]
             
-            means = out1[..., :self.M*D]
-            stds  = out1[..., self.M*D:self.M * (D+1)]
-            weights = out1[..., self.M*(D+1):]
+            means = out1[..., :self.M*D].reshape(-1, M, D)
+            stds  = out1[..., self.M*D:self.M * (D+1)].unsqueeze(-1)
+            weights = out1[..., self.M*(D+1):].unsqueeze(-1)
             
             means = torch.where(torch.isnan(means) | torch.isinf(means), torch.zeros_like(means), means).to(means.device)
             stds = torch.where(torch.isnan(stds) | torch.isinf(stds), torch.zeros_like(stds), stds).to(stds.device)
             weights = torch.where(torch.isnan(weights) | torch.isinf(weights), torch.zeros_like(weights), weights).to(weights.device)
             
             gen = weights * torch.normal(means, stds)
-            gen = torch.mean(gen, dim=-1)
+            
+            match(method):
+                case 'mean':
+                    gen = torch.mean(gen, axis=1)
+                case 'sum':
+                    gen = torch.sum(gen, axis=1)
             nextval = gen.reshape(1, 1, gen.shape[-1], 1)
             output.append(nextval)
             output_not_computed.append(out)

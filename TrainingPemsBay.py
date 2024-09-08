@@ -70,8 +70,8 @@ def run_imputation(model_params, optim, optim_params):
 
     log_metrics = {
         'LEnc': LogLikelihood(False),
-        'LDec': LogLikelihood(),
-        'Loss': loss_fn,
+        'LDec': LogLikelihood(True),
+        'Loss': LogLikelihood(both=True),
     }
 
     scheduler_class = getattr(torch.optim.lr_scheduler, 'CosineAnnealingLR')
@@ -91,7 +91,7 @@ def run_imputation(model_params, optim, optim_params):
     ########################################
     # logging options                      #
     ########################################
-    exp_logger = TensorBoardLogger(save_dir=f'logs/generation/grgn1/',
+    exp_logger = TensorBoardLogger(save_dir=f'logs/generation/PemsBay/',
                                        name='tensorboard')
 
     ########################################
@@ -99,20 +99,20 @@ def run_imputation(model_params, optim, optim_params):
     ########################################
 
     early_stop_callback = EarlyStopping(monitor='val_loss',
-                                        patience=50,
+                                        patience=10,
                                         mode='min')
 
     checkpoint_callback = ModelCheckpoint(
-        dirpath='logs/generation/grgn1/',
-        filename='best-model-{epoch:02d}-{val_loss:.4f}',
+        dirpath='logs/generation/PemsBay/',
+        filename='PemsBay-model-{epoch:02d}-{val_loss:.4f}',
         save_top_k=1,
         monitor='val_loss',
         mode='min',
     )
 
     trainer = Trainer(
-        max_epochs=10,
-        default_root_dir='logs/generation/grgn1/',
+        max_epochs=100,
+        default_root_dir='logs/generation/PemsBay/',
         logger=exp_logger,
         accelerator='gpu' if torch.cuda.is_available() else 'cpu',
         devices=1,
@@ -145,15 +145,16 @@ def run_imputation(model_params, optim, optim_params):
 
 if __name__ == '__main__':
     model_params = {
-        'hidden_size': 32,
+        'hidden_size': 20,
         'embedding_size': 8,
         'n_layers': 1,
+        'mixture_size': 40,
         'kernel_size': 2,
         'decoder_order': 1,
         'layer_norm': True,
         'dropout': 0.01,
     }
-    optim_params = {'lr': 0.001, 'weight_decay': 0.01}
+    optim_params = {'lr': 0.0001, 'weight_decay': 0.01}
     
     optim = 'RMSprop' # SGD or Adam
     

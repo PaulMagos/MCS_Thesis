@@ -32,7 +32,7 @@ class GRGNCell(Module):
         self.kernel_size = kernel_size
         
         # Dimension of the output of first stage (input of second stage) + imput dimension
-        rnn_input_size = self.input_size + hidden_size
+        rnn_input_size = hidden_size + (self.input_size + 2) * self.mixture_size
         
         self.cells = ModuleList()
         self.norms = ModuleList()
@@ -52,10 +52,11 @@ class GRGNCell(Module):
         self.dropout = Dropout(dropout) if dropout > 0 else None
         
         # First Stage - Mixture Density Model
-        self.first_stage = GMMCell(input_size, hidden_size, mixture_size)
+        self.first_stage = GMMCell(input_size, n_nodes, hidden_size, mixture_size)
         
         # Second Stage - Spatial Decoder Mixture Density Model
-        self.spatial_decoder = SpatialDecoderGMM(input_size=n_nodes,
+        self.spatial_decoder = SpatialDecoderGMM(input_size=input_size,
+                                              n_nodes= n_nodes,
                                               hidden_size=hidden_size,
                                               exog_size=exog_size,
                                               order=decoder_order,
@@ -122,7 +123,7 @@ class GRGNCell(Module):
             # first generate gaussians means, stds from state
             xs_hat_1 = self.first_stage(h_s)
             # retrieve maximum information from neighbors
-            xs_hat_2, repr_s, H = self.spatial_decoder(x=x_s.view(-1, x.size(-1) * x.size(-2)),
+            xs_hat_2, repr_s, H = self.spatial_decoder(x=x_s,
                                                     x_hat_1 = xs_hat_1,
                                                     h=h_s,
                                                     u=None,
@@ -130,8 +131,7 @@ class GRGNCell(Module):
                                                     edge_weight=edge_weight)
             # readout of generation state 
             # prepare inputs
-            inputs = self.calculate(xs_hat_2)
-            inputs = torch.cat([inputs, H], dim=-1)
+            inputs = torch.cat([xs_hat_2, H], dim=-1)
             # update state with original sequence filled using generations
             h = self.update_state(inputs, h, edge_index, edge_weight)
             # store generations and states
@@ -147,17 +147,3 @@ class GRGNCell(Module):
         representations = torch.stack(representations, dim=1)
 
         return generations, predictions, representations, states
-    
-    def calculate(self, x):
-        D = x.shape[-1] // self.mixture_size - 2
-        
-        means = x[..., :self.mixture_size*D].view(-1, D, self.mixture_size).contiguous()
-        stds  = x[..., self.mixture_size*D:self.mixture_size * (D+1)]
-        weights = x[..., self.mixture_size*(D+1):]
-        means = torch.where(torch.isnan(means) | torch.isinf(means), torch.zeros_like(means), means).to(means.device)
-        stds = torch.where(torch.isnan(stds) | torch.isinf(stds), torch.zeros_like(stds), stds).to(stds.device)
-        weights = torch.where(torch.isnan(weights) | torch.isinf(weights), torch.zeros_like(weights), weights).to(weights.device)
-            
-        pred = weights * torch.normal(means, stds)
-        rnn_in = torch.mean(pred, dim=-1).reshape(1, D, self.input_size)
-        return rnn_in

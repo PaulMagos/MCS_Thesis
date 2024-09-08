@@ -70,9 +70,9 @@ def run_imputation(model_params, optim, optim_params, batch_size):
     loss_fn = LogLikelihood(both=True)
 
     log_metrics = {
-        '1stLL': LogLikelihood(False),
-        '2ndLL': LogLikelihood(),
-        '12LL': LogLikelihood(both=True),
+        'LEnc': LogLikelihood(False),
+        'LDec': LogLikelihood(True),
+        'Loss': LogLikelihood(both=True),
     }
 
     scheduler_class = getattr(torch.optim.lr_scheduler, 'CosineAnnealingLR')
@@ -92,7 +92,7 @@ def run_imputation(model_params, optim, optim_params, batch_size):
     ########################################
     # logging options                      #
     ########################################
-    exp_logger = TensorBoardLogger(save_dir=f'logs/generation/grgn2/',
+    exp_logger = TensorBoardLogger(save_dir=f'logs/generation/MetrLA/',
                                        name='tensorboard')
 
     ########################################
@@ -100,20 +100,20 @@ def run_imputation(model_params, optim, optim_params, batch_size):
     ########################################
 
     early_stop_callback = EarlyStopping(monitor='val_loss',
-                                        patience=50,
+                                        patience=10,
                                         mode='min')
 
     checkpoint_callback = ModelCheckpoint(
-        dirpath='logs/generation/grgn2/',
-        filename='best-model-{epoch:02d}-{val_loss:.4f}',
+        dirpath='logs/generation/MetrLA/',
+        filename='MetrLA-model-{epoch:02d}-{val_loss:.4f}',
         save_top_k=1,
         monitor='val_loss',
         mode='min',
     )
 
     trainer = Trainer(
-        max_epochs=500,
-        default_root_dir='logs/generation/grgn2/',
+        max_epochs=100,
+        default_root_dir='logs/generation/MetrLA/',
         logger=exp_logger,
         accelerator='gpu' if torch.cuda.is_available() else 'cpu',
         devices=1,
@@ -146,20 +146,19 @@ def run_imputation(model_params, optim, optim_params, batch_size):
 
 if __name__ == '__main__':
     model_params = {
-        'hidden_size': 128,
-        'embedding_size': 16,
+        'hidden_size': 20,
+        'embedding_size': 8,
         'n_layers': 1,
+        'mixture_size': 40,
         'kernel_size': 2,
         'decoder_order': 1,
         'layer_norm': True,
-        'dropout': 0.05,
+        'dropout': 0.01,
     }
-    optim_params = {'lr': 0.00001, 'weight_decay': 0.01}
+    optim_params = {'lr': 0.0001, 'weight_decay': 0.01}
     
     optim = 'RMSprop' # SGD or Adam
     
-    batch_size = 1
-    
-    res = run_imputation(model_params, optim, optim_params, batch_size)
+    res = run_imputation(model_params, optim, optim_params)
 
     logger.info(res)
