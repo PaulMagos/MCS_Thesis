@@ -27,10 +27,10 @@ class SpatialDecoderGMM(Module):
         self.order = order
 
         # Input channels of convolution
-        in_channels = input_size + (input_size + 2) * num_components + hidden_size 
+        in_channels = input_size + (input_size + 2) * num_components + hidden_size * input_size
         
-        # 
-        self.lin_in = Linear(in_channels, hidden_size)
+        #
+        self.lin_in = Linear(in_channels, hidden_size * input_size)
         
         self.graph_conv = DiffConv(in_channels=hidden_size,
                                    out_channels=hidden_size,
@@ -72,11 +72,11 @@ class SpatialDecoderGMM(Module):
                 u: OptTensor = None
                 ):
         # print(x.shape, x_hat_1.shape, h.shape)
-        x_in = [x, x_hat_1, h]
+        x_in = [x, x_hat_1, h.view(-1, h.size(-1)*h.size(-2))]
         if u is not None:
             x_in += [u]
         x_in = torch.cat(x_in, dim=-1)
-        x_in = self.lin_in(x_in)
+        x_in = self.lin_in(x_in).view(-1, x.shape[-1], h.size(-1))
         if self.order > 1: 
             support = self.compute_support(edge_index, edge_weight, num_nodes=x.size(1))
             self.graph_conv._support = support
@@ -91,6 +91,6 @@ class SpatialDecoderGMM(Module):
         
         out1 = torch.cat([out, h], dim=-1)
         out = self.gmm(out1)
-        out = torch.cat([out, h], dim=-1)
+        # out = torch.cat([out, h] , dim=-1)
         # out = self.activation(out)
-        return out, out1
+        return out, out1, h

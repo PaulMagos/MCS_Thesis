@@ -1,5 +1,4 @@
 import torch
-from omegaconf import DictConfig
 from pytorch_lightning import Trainer
 from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint
 from pytorch_lightning.loggers import TensorBoardLogger, WandbLogger
@@ -17,7 +16,7 @@ from GRGN.Loss.LogLikelihood import LogLikelihood
 from tsl.ops.imputation import add_missing_values
 from tsl.utils.casting import torch_to_numpy
 
-def run_imputation(model_params, optim, optim_params, batch_size):
+def run_imputation(model_params, optim, optim_params):
     ########################################
     # data module                          #
     ########################################
@@ -36,7 +35,7 @@ def run_imputation(model_params, optim, optim_params, batch_size):
 
     
     # instantiate dataset
-    torch_dataset = SpatioTemporalDataset(target=dataset.dataframe()[-10000:],
+    torch_dataset = SpatioTemporalDataset(target=dataset.dataframe()[-500:],
                                       covariates=covariates,
                                       connectivity=adj,
                                       window=1,
@@ -47,8 +46,8 @@ def run_imputation(model_params, optim, optim_params, batch_size):
         dataset=torch_dataset,
         scalers=scalers,
         splitter=dataset.get_splitter(**{'val_len': 0.2, 'test_len': 0.1}),
-        batch_size=batch_size,
-        workers=32)
+        batch_size=1,
+        workers=8)
     dm.setup(stage='fit')
 
     # if cfg.get('in_sample', False):
@@ -70,9 +69,9 @@ def run_imputation(model_params, optim, optim_params, batch_size):
     loss_fn = LogLikelihood(both=True)
 
     log_metrics = {
-        '1stLL': LogLikelihood(False),
-        '2ndLL': LogLikelihood(),
-        '12LL': LogLikelihood(both=True),
+        'LEnc': LogLikelihood(False),
+        'LDec': LogLikelihood(),
+        'Loss': loss_fn,
     }
 
     scheduler_class = getattr(torch.optim.lr_scheduler, 'CosineAnnealingLR')
@@ -112,7 +111,7 @@ def run_imputation(model_params, optim, optim_params, batch_size):
     )
 
     trainer = Trainer(
-        max_epochs=500,
+        max_epochs=10,
         default_root_dir='logs/generation/grgn1/',
         logger=exp_logger,
         accelerator='gpu' if torch.cuda.is_available() else 'cpu',
@@ -133,33 +132,31 @@ def run_imputation(model_params, optim, optim_params, batch_size):
 
     output = trainer.predict(generator, dataloaders=dm.test_dataloader())
     output = generator.collate_prediction_outputs(output)
-    output = torch_to_numpy(output)
+    # output = torch_to_numpy(output)
     y_hat, y_true = (output['y_hat'], output['y'])
-    res = dict(test_mae=loss_fn.loss_function(y_hat, y_true))
+    res = dict(test_mae=loss_fn.loss_function(y_hat, y_true[-1]))
 
     output = trainer.predict(generator, dataloaders=dm.val_dataloader())
     output = generator.collate_prediction_outputs(output)
-    output = torch_to_numpy(output)
+    # output = torch_to_numpy(output)
     y_hat, y_true = (output['y_hat'], output['y'])
-    res.update(dict(val_mae=loss_fn.loss_function(y_hat, y_true)))
+    res.update(dict(val_mae=loss_fn.loss_function(y_hat, y_true[-1])))
     return res
 
 if __name__ == '__main__':
     model_params = {
-        'hidden_size': 128,
-        'embedding_size': 16,
+        'hidden_size': 32,
+        'embedding_size': 8,
         'n_layers': 1,
         'kernel_size': 2,
         'decoder_order': 1,
         'layer_norm': True,
-        'dropout': 0.05,
+        'dropout': 0.01,
     }
-    optim_params = {'lr': 0.00001, 'weight_decay': 0.01}
+    optim_params = {'lr': 0.001, 'weight_decay': 0.01}
     
     optim = 'RMSprop' # SGD or Adam
     
-    batch_size = 1
-    
-    res = run_imputation(model_params, optim, optim_params, batch_size)
+    res = run_imputation(model_params, optim, optim_params)
 
     logger.info(res)

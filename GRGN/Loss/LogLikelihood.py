@@ -51,7 +51,7 @@ class LogLikelihood(Metric):
             
             # sqrt = torch.sqrt(2. * torch.tensor(np.pi))
             # Calculate exponent term
-            exponent = -torch.sum((mu - y_true)**2, -1) / (2*sigma**2)
+            exponent = -torch.sum((mu - y_true)**2, -2) / (2*sigma**2)
             # Handle potential NaN or Inf values in exponent
             exponent = torch.where(torch.isnan(exponent) | torch.isinf(exponent), torch.zeros_like(exponent), exponent).to(y_pred.device)
             # Calculate left term
@@ -63,13 +63,13 @@ class LogLikelihood(Metric):
             # Handle potential NaN or Inf values in loss
             loss = torch.where(torch.isnan(loss) | torch.isinf(loss), torch.zeros_like(loss), loss).to(y_pred.device)
             
-            return loss.unsqueeze(-1)
+            return loss.mean(-1)
 
         D = y_true.shape[-1]
         M = y_pred.shape[-1] // (D+2)
         
-        Y_Pred_shape = y_true.shape
-        new_shape = (M, *Y_Pred_shape)
+        Y_Pred_shape = y_true.shape[1:]
+        new_shape = (M, 1)
         
         result = torch.zeros(new_shape).to(y_pred.device)
         for m in range(M):
@@ -80,7 +80,7 @@ class LogLikelihood(Metric):
         
         # Avoiding division by zero
         result = torch.where(result == 0, torch.ones_like(result) * 1e-8, result).to(y_pred.device)
-        result = - torch.log(result.sum(0).mean(0).mean(-2)).to(y_pred.device)
+        result = - torch.log(result.sum(0)).to(y_pred.device)
         return result
 
     def update(self, y_pred, y_true, **kwargs):

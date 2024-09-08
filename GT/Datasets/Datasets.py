@@ -109,7 +109,7 @@ def get_EEG(stds_to_use: int, change: bool):
 def split_data(name, dataset, stds_to_use):
     if not (os.path.exists(f'{base_path}/data/{name}/train.pkl') and os.path.exists(f'{base_path}/data/{name}/preprocessing.npz')):
         Train, Validation, Test = \
-                    np.split(dataset, [int(.7*len(dataset)), int(.9*len(dataset))])
+                    np.split(dataset, [int(.9*len(dataset)), int(.95*len(dataset))])
                     
         Train = np.array(Train)
         Validation = np.array(Validation)

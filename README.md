@@ -9,15 +9,14 @@ https://github.com/tonyduan/mixture-density-network/blob/master/README.md
 
 Diversity Experiment
 
-
 ONGOING
 ##################################
-Maximum Mean Discrepancy
-Compare with RNN Generative Model
 
 
 DONE
 ##################################
 Train GRIN for Forecasting
 Anomaly Detection (Swap two nodes)
+Compare with RNN Generative Model
+Maximum Mean Discrepancy
 Train RNN Generative Model

@@ -91,59 +91,70 @@ class GRGNModel(BaseModel):
                 x: Tensor,
                 edge_index: Adj,
                 edge_weight: OptTensor = None,
-                u: OptTensor = None) -> Tensor:
+                u: OptTensor = None, 
+                first_part=False) -> Tensor:
         """"""
         out = self.forward(x=x,
                             u=u,
                             edge_index=edge_index,
                             edge_weight=edge_weight)
         
-        out = out[..., (self.input_size + 2) * self.M:]
-        D = out.shape[-1] // self.M - 2
+        if first_part:
+            out1 = out[..., (self.input_size + 2) * self.M:]
+        else:
+            out1 = out[..., :(self.input_size + 2) * self.M]
+            
+        D = out1.shape[-1] // self.M - 2
         
-        means = out[:, :, :self.M*D]
-        stds  = out[:, :, self.M*D:self.M * (D+1)]
-        weights = out[:, :, self.M*(D+1):]
-        
+        means = out1[..., :self.M*D]
+        stds  = out1[..., self.M*D:self.M * (D+1)]
+        weights = out1[..., self.M*(D+1):]
+        means = torch.where(torch.isnan(means) | torch.isinf(means), torch.zeros_like(means), means).to(means.device)
+        stds = torch.where(torch.isnan(stds) | torch.isinf(stds), torch.zeros_like(stds), stds).to(stds.device)
+        weights = torch.where(torch.isnan(weights) | torch.isinf(weights), torch.zeros_like(weights), weights).to(weights.device)
+            
         pred = weights * torch.normal(means, stds)
         pred = torch.mean(pred, dim=-1)
         
-        return pred
+        return pred, out
     
     def generate(self,
                    X: Tensor,
                    edge_index: Adj,
                    edge_weight: OptTensor = None,
                    u: OptTensor = None,
-                   steps: int= 32) -> Tensor:
+                   steps: int= 32, 
+                   first_part=False) -> Tensor:
     
-        out = self.forward(x=X[-1],
-                           u=u,
-                           edge_index=edge_index,
-                           edge_weight=edge_weight
-                           )
-        
-        out = out[..., :(self.input_size + 2) * self.M]
-        
-        output = None
+        nextval = X
+        output = []
+        output_not_computed = []
         for i in range(steps):
-            D = out.shape[-1] // self.M - 2
-            
-            means = out[..., :self.M*D]
-            stds  = out[..., self.M*D:self.M * (D+1)]
-            weights = out[..., self.M*(D+1):]
-            
-            gen = weights * torch.normal(means, stds)
-            gen = torch.mean(gen, dim=-1)
-            nextval = gen.reshape(1, 1, gen.shape[-1], 1)
-            print("gen", gen.shape, nextval.shape)
-            output = [gen] if output is None else output.append(gen)
             out = self.forward(x=nextval,
                            u=u,
                            edge_index=edge_index,
                            edge_weight=edge_weight
                            )
+
+            if first_part:
+                out1 = out[..., (self.input_size + 2) * self.M:]
+            else:
+                out1 = out[..., :(self.input_size + 2) * self.M]
+            
+            D = out1.shape[-1] // self.M - 2
+            
+            means = out1[..., :self.M*D]
+            stds  = out1[..., self.M*D:self.M * (D+1)]
+            weights = out1[..., self.M*(D+1):]
+            
+            means = torch.where(torch.isnan(means) | torch.isinf(means), torch.zeros_like(means), means).to(means.device)
+            stds = torch.where(torch.isnan(stds) | torch.isinf(stds), torch.zeros_like(stds), stds).to(stds.device)
+            weights = torch.where(torch.isnan(weights) | torch.isinf(weights), torch.zeros_like(weights), weights).to(weights.device)
+            
+            gen = weights * torch.normal(means, stds)
+            gen = torch.mean(gen, dim=-1)
+            nextval = gen.reshape(1, 1, gen.shape[-1], 1)
+            output.append(nextval)
+            output_not_computed.append(out)
         
-            out = out[..., :(self.input_size + 2) * self.M]
-        
-        return output
+        return output, output_not_computed
