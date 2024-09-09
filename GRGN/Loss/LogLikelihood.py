@@ -74,17 +74,21 @@ class LogLikelihood(Metric):
         y_pred = reshape_to_original(y_pred, y_true.shape[-2], D, M)
         D = y_true.shape[-1] * y_true.shape[-2]
         
-        new_shape = (M, 1)
+        steps = y_true.shape[0]
+        
+        new_shape = (steps, M, 1)
         
         result = torch.zeros(new_shape).to(y_pred.device)
-        for m in range(M):
-            result[m] = loss(m, M, D, y_true, y_pred)
+        for step in range(steps):
+            for m in range(M):
+                result[m] = loss(m, M, D, y_true[step], y_pred[step])
             
         # Handling NaN and Inf values
         result = torch.where(torch.isnan(result) | torch.isinf(result), torch.zeros_like(result), result).to(y_pred.device)
         
         # Avoiding division by zero
         result = torch.where(result == 0, torch.ones_like(result) * 1e-8, result).to(y_pred.device)
+        result = result.sum(0)
         result = -torch.log(result.sum(0)).to(y_pred.device)
         return result
 

@@ -17,7 +17,7 @@ from GRGN.Loss.LogLikelihood import LogLikelihood
 from tsl.ops.imputation import add_missing_values
 from tsl.utils.casting import torch_to_numpy
 
-def run_imputation(model_params, optim, optim_params, batch_size):
+def run_imputation(model_params, optim, optim_params):
     ########################################
     # data module                          #
     ########################################
@@ -36,7 +36,7 @@ def run_imputation(model_params, optim, optim_params, batch_size):
 
     
     # instantiate dataset
-    torch_dataset = SpatioTemporalDataset(target=dataset.dataframe()[-10000:],
+    torch_dataset = SpatioTemporalDataset(target=dataset.dataframe()[-2000:],
                                       covariates=covariates,
                                       connectivity=adj,
                                       window=1,
@@ -47,7 +47,7 @@ def run_imputation(model_params, optim, optim_params, batch_size):
         dataset=torch_dataset,
         scalers=scalers,
         splitter=dataset.get_splitter(**{'val_len': 0.2, 'test_len': 0.1}),
-        batch_size=batch_size,
+        batch_size=1,
         workers=32)
     dm.setup(stage='fit')
 
@@ -100,7 +100,7 @@ def run_imputation(model_params, optim, optim_params, batch_size):
     ########################################
 
     early_stop_callback = EarlyStopping(monitor='val_loss',
-                                        patience=10,
+                                        patience=2,
                                         mode='min')
 
     checkpoint_callback = ModelCheckpoint(
@@ -112,11 +112,10 @@ def run_imputation(model_params, optim, optim_params, batch_size):
     )
 
     trainer = Trainer(
-        max_epochs=100,
+        max_epochs=5,
         default_root_dir='logs/generation/MetrLA/',
         logger=exp_logger,
-        accelerator='gpu' if torch.cuda.is_available() else 'cpu',
-        devices=1,
+        accelerator='gpu',
         gradient_clip_val=5,
         callbacks=[early_stop_callback, checkpoint_callback])
 
@@ -146,7 +145,7 @@ def run_imputation(model_params, optim, optim_params, batch_size):
 
 if __name__ == '__main__':
     model_params = {
-        'hidden_size': 20,
+        'hidden_size': 8,
         'embedding_size': 8,
         'n_layers': 1,
         'mixture_size': 40,

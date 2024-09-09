@@ -99,7 +99,7 @@ def run_imputation(model_params, optim, optim_params):
     ########################################
 
     early_stop_callback = EarlyStopping(monitor='val_loss',
-                                        patience=10,
+                                        patience=2,
                                         mode='min')
 
     checkpoint_callback = ModelCheckpoint(
@@ -111,7 +111,7 @@ def run_imputation(model_params, optim, optim_params):
     )
 
     trainer = Trainer(
-        max_epochs=100,
+        max_epochs=5,
         default_root_dir='logs/generation/PemsBay/',
         logger=exp_logger,
         accelerator='gpu' if torch.cuda.is_available() else 'cpu',
@@ -145,10 +145,10 @@ def run_imputation(model_params, optim, optim_params):
 
 if __name__ == '__main__':
     model_params = {
-        'hidden_size': 20,
+        'hidden_size': 8,
         'embedding_size': 8,
         'n_layers': 1,
-        'mixture_size': 40,
+        'mixture_size': 80,
         'kernel_size': 2,
         'decoder_order': 1,
         'layer_norm': True,

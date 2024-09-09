@@ -172,6 +172,7 @@ class GRGNModel(BaseModel):
                     gen = torch.mean(gen, axis=1)
                 case 'sum':
                     gen = torch.sum(gen, axis=1)
+                    
             nextval = gen.reshape(1, 1, gen.shape[-1], 1)
             output.append(nextval)
             output_not_computed.append(out)
