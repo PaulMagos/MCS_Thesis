@@ -9,6 +9,9 @@ https://github.com/tonyduan/mixture-density-network/blob/master/README.md
 
 Diversity Experiment
 
+ARIMA https://www.kdnuggets.com/2023/08/times-series-analysis-arima-models-python.html
+Vector Autoregressive
+
 ONGOING
 ##################################
 
