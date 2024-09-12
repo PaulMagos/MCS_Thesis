@@ -6,6 +6,7 @@ from tsl.nn.layers import NodeEmbedding
 from torch_geometric.typing import Adj, OptTensor
 from .Cells import GRGNCell
 from GRGN.Utils.reshapes import reshape_to_original
+from tqdm import tqdm
 from torch.nn import Linear, Sequential, ReLU, Dropout
 
 class GRGNModel(BaseModel):
@@ -100,20 +101,21 @@ class GRGNModel(BaseModel):
                             u=u,
                             edge_index=edge_index,
                             edge_weight=edge_weight)
-        
+
         if first_part:
-            out1 = out[..., (self.input_size + 2) * self.M:]
+            out1 = out[..., (self.input_size * 2 + 1) * self.M:]
         else:
-            out1 = out[..., :(self.input_size + 2) * self.M]
-            
+            out1 = out[..., :(self.input_size * 2 + 1) * self.M]
+        
         D = x.shape[-1]
-        M = out1.shape[-1] // (D+2)
+        M = out1.shape[-1] // ((D*2)+1)
         out1 = reshape_to_original(out1, x.shape[-2], D, M)
         D = x.shape[-1] * x.shape[-2]
     
         means = out1[..., :self.M*D].reshape(-1, M, D)
-        stds  = out1[..., self.M*D:self.M * (D+1)].unsqueeze(-1)
-        weights = out1[..., self.M*(D+1):].unsqueeze(-1)
+        stds  = out1[..., self.M*D:self.M * (D*2)].reshape(-1, M, D)
+        # stds  = out1[..., self.M*D:self.M * (D+2)].unsqueeze(-1)
+        weights = out1[..., self.M*(D*2):].unsqueeze(-1)
         means = torch.where(torch.isnan(means) | torch.isinf(means), torch.zeros_like(means), means).to(means.device)
         stds = torch.where(torch.isnan(stds) | torch.isinf(stds), torch.zeros_like(stds), stds).to(stds.device)
         weights = torch.where(torch.isnan(weights) | torch.isinf(weights), torch.zeros_like(weights), weights).to(weights.device)
@@ -140,41 +142,98 @@ class GRGNModel(BaseModel):
         nextval = X
         output = []
         output_not_computed = []
-        for i in range(steps):
-            out = self.forward(x=nextval,
-                           u=u,
-                           edge_index=edge_index,
-                           edge_weight=edge_weight
-                           )
+        with tqdm(len(range(0, steps)), total=steps-1, desc='Generating', unit='step') as t:
+            for i in range(steps):
+                out = self.forward(x=nextval,
+                            u=u,
+                            edge_index=edge_index,
+                            edge_weight=edge_weight
+                            )
 
-            if first_part:
-                out1 = out[..., (self.input_size + 2) * self.M:]
-            else:
-                out1 = out[..., :(self.input_size + 2) * self.M]
-            
-            D = X.shape[-1]
-            M = out1.shape[-1] // (D+2)
-            out1 = reshape_to_original(out1, X.shape[-2], D, M)
-            D = X.shape[-1] * X.shape[-2]
-            
-            means = out1[..., :self.M*D].reshape(-1, M, D)
-            stds  = out1[..., self.M*D:self.M * (D+1)].unsqueeze(-1)
-            weights = out1[..., self.M*(D+1):].unsqueeze(-1)
-            
-            means = torch.where(torch.isnan(means) | torch.isinf(means), torch.zeros_like(means), means).to(means.device)
-            stds = torch.where(torch.isnan(stds) | torch.isinf(stds), torch.zeros_like(stds), stds).to(stds.device)
-            weights = torch.where(torch.isnan(weights) | torch.isinf(weights), torch.zeros_like(weights), weights).to(weights.device)
-            
-            gen = weights * torch.normal(means, stds)
-            
-            match(method):
-                case 'mean':
-                    gen = torch.mean(gen, axis=1)
-                case 'sum':
-                    gen = torch.sum(gen, axis=1)
-                    
-            nextval = gen.reshape(1, 1, gen.shape[-1], 1)
-            output.append(nextval)
-            output_not_computed.append(out)
+                if first_part:
+                    out1 = out[..., (self.input_size * 2 + 1) * self.M:]
+                else:
+                    out1 = out[..., :(self.input_size * 2 + 1) * self.M]
+                
+                D = X.shape[-1]
+                M = out1.shape[-1] // ((D*2)+1)
+                out1 = reshape_to_original(out1, X.shape[-2], D, M)
+                D = X.shape[-1] * X.shape[-2]
+                
+                means = out1[..., :self.M*D].reshape(-1, M, D)
+                stds  = out1[..., self.M*D:self.M * (D*2)].reshape(-1, M, D)
+                # stds  = out1[..., self.M*D:self.M * (D+2)].unsqueeze(-1)
+                weights = out1[..., self.M*(D*2):].unsqueeze(-1)
+                
+                means = torch.where(torch.isnan(means) | torch.isinf(means), torch.zeros_like(means), means).to(means.device)
+                stds = torch.where(torch.isnan(stds) | torch.isinf(stds), torch.zeros_like(stds), stds).to(stds.device)
+                weights = torch.where(torch.isnan(weights) | torch.isinf(weights), torch.zeros_like(weights), weights).to(weights.device)
+                
+                gen = weights * torch.normal(means, stds)
+                
+                match(method):
+                    case 'mean':
+                        gen = torch.mean(gen, axis=1)
+                    case 'sum':
+                        gen = torch.sum(gen, axis=1)
+                        
+                nextval = gen.reshape(1, 1, gen.shape[-1], 1)
+                output.append(nextval)
+                output_not_computed.append(out)
+                t.update(1)
+        
+        return output, output_not_computed
+
+    def predict_iter(self,
+                   X: Tensor,
+                   edge_index: Adj,
+                   edge_weight: OptTensor = None,
+                   u: OptTensor = None,
+                   method: str = 'mean',
+                   first_part = False
+                   ) -> Tensor:
+    
+        nextval = X
+        output = []
+        output_not_computed = []
+        steps = X.shape[0]
+        with tqdm(len(range(0, steps)), total=steps, desc='Predicting', unit='step') as t:
+            for i in range(steps):
+                nextval = X[i].reshape(1, 1, X.shape[-2], 1)
+                out = self.forward(x=nextval,
+                            u=u,
+                            edge_index=edge_index,
+                            edge_weight=edge_weight
+                            )
+
+                if first_part:
+                    out1 = out[..., (self.input_size * 2 + 1) * self.M:]
+                else:
+                    out1 = out[..., :(self.input_size * 2 + 1) * self.M]
+                
+                D = X.shape[-1]
+                M = out1.shape[-1] // ((D*2) + 1)
+                out1 = reshape_to_original(out1, X.shape[-2], D, M)
+                D = X.shape[-1] * X.shape[-2]
+                
+                means = out1[..., :self.M*D].reshape(-1, M, D)
+                stds  = out1[..., self.M*D:self.M * (D*2)].reshape(-1, M, D)
+                weights = out1[..., self.M*(D*2):].unsqueeze(-1)
+                
+                means = torch.where(torch.isnan(means) | torch.isinf(means), torch.zeros_like(means), means).to(means.device)
+                stds = torch.where(torch.isnan(stds) | torch.isinf(stds), torch.zeros_like(stds), stds).to(stds.device)
+                weights = torch.where(torch.isnan(weights) | torch.isinf(weights), torch.zeros_like(weights), weights).to(weights.device)
+                
+                gen = weights * torch.normal(means, stds)
+                
+                match(method):
+                    case 'mean':
+                        gen = torch.mean(gen, axis=1)
+                    case 'sum':
+                        gen = torch.sum(gen, axis=1)
+                        
+                output.append(gen.reshape(1, 1, gen.shape[-1], 1))
+                output_not_computed.append(out)
+                t.update(1)
         
         return output, output_not_computed

@@ -120,7 +120,7 @@ def correlation_comparison(df_original, df_generated):
     
     corr_diff = (corr_original - corr_generated).abs().mean().mean()
     
-    return corr_diff
+    return corr_diff, corr_generated.mean().mean(), corr_original.mean().mean()
 
 # Inception Score (IS)
 def inception_score(df_original, df_generated, n_splits=10):
@@ -131,10 +131,10 @@ def inception_score(df_original, df_generated, n_splits=10):
     the score is based on the divergence between individual sample predictions
     and the marginal distribution across all samples.
     """
-    model = MLPClassifier(max_iter=500)
+    model = MLPClassifier(max_iter=200)
     
     df = pd.concat([df_original, df_generated], ignore_index=True).reset_index(drop=True)
-    df = df.sample(frac=1).reset_index(drop=True)
+    df = df.sample(frac=0.7).reset_index(drop=True)
     labels = df.pop('gen')
     
     model.fit(df, labels)
@@ -171,7 +171,7 @@ def evaluate_datasets(df_original, df_generated, target_column=None):
     report['js_divergence'] = jensen_shannon_divergence(df_original_stats, df_generated_stats)
     
     # 5. Correlation Difference
-    report['correlation_difference'] = correlation_comparison(df_original_stats, df_generated_stats)
+    report['correlation_difference'], report['correlation_gen'], report['correlation_original'] = correlation_comparison(df_original_stats, df_generated_stats)
 
     # 6. MMD Metrics
     X_original = df_original_stats.to_numpy()

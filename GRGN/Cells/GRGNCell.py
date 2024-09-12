@@ -32,7 +32,7 @@ class GRGNCell(Module):
         self.kernel_size = kernel_size
         
         # Dimension of the output of first stage (input of second stage) + imput dimension
-        rnn_input_size = hidden_size + (self.input_size + 2) * self.mixture_size
+        rnn_input_size = hidden_size + (self.input_size * 2 + 1) * self.mixture_size
         
         self.cells = ModuleList()
         self.norms = ModuleList()

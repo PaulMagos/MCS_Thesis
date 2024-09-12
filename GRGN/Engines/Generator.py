@@ -184,6 +184,13 @@ class Generator(pl.LightningModule):
         if self.filter_forward_kwargs:
             kwargs = self._filter_forward_kwargs(kwargs)
         return predict_fn(*args, **kwargs)
+    
+    def predict_iter(self, *args, **kwargs):
+        """"""
+        predict_fn = self.model.predict_iter
+        if self.filter_forward_kwargs:
+            kwargs = self._filter_forward_kwargs(kwargs)
+        return predict_fn(*args, **kwargs)
 
     def _set_metrics(self, metrics):
         self.train_metrics = MetricCollection(

@@ -49,14 +49,14 @@ class LogLikelihood(Metric):
             y_pred = y_pred[..., firts_pred:]
         
         def loss(m, M, D, y_true, y_pred):
-            y_true = y_true.view(-1, D * y_true.shape[-1])
+            y_true_local = y_true.view(-1, D * y_true.shape[-1])
             mu = y_pred[..., D*m:(m+1)*D]
-            sigma = y_pred[..., D*M+m]
-            alpha = y_pred[..., (D+1)*M+m]
+            sigma = y_pred[..., D*M+(D*m): D*M+D*(m+1)]
+            alpha = y_pred[..., (D*2)*M+m]
             
             # sqrt = torch.sqrt(2. * torch.tensor(np.pi))
             # Calculate exponent term
-            exponent = -torch.sum((mu - y_true)**2, -1) / (2*sigma**2)
+            exponent = -torch.sum((mu - y_true_local)**2, -1) / (2*sigma**2)
             # Handle potential NaN or Inf values in exponent
             exponent = torch.where(torch.isnan(exponent) | torch.isinf(exponent), torch.zeros_like(exponent), exponent).to(y_pred.device)
             # Calculate left term
@@ -67,21 +67,18 @@ class LogLikelihood(Metric):
             loss = left * torch.exp(exponent)
             # Handle potential NaN or Inf values in loss
             loss = torch.where(torch.isnan(loss) | torch.isinf(loss), torch.zeros_like(loss), loss).to(y_pred.device)
-            return loss
+            return loss.sum(-1)
 
         D = y_true.shape[-1]
-        M = y_pred.shape[-1] // (D+2)
+        M = y_pred.shape[-1] // ((D * 2)+1)
         y_pred = reshape_to_original(y_pred, y_true.shape[-2], D, M)
         D = y_true.shape[-1] * y_true.shape[-2]
         
-        steps = y_true.shape[0]
-        
-        new_shape = (steps, M, 1)
+        new_shape = (M, 1)
         
         result = torch.zeros(new_shape).to(y_pred.device)
-        for step in range(steps):
-            for m in range(M):
-                result[m] = loss(m, M, D, y_true[step], y_pred[step])
+        for m in range(M):
+            result[m] = loss(m, M, D, y_true, y_pred)
             
         # Handling NaN and Inf values
         result = torch.where(torch.isnan(result) | torch.isinf(result), torch.zeros_like(result), result).to(y_pred.device)
@@ -89,7 +86,7 @@ class LogLikelihood(Metric):
         # Avoiding division by zero
         result = torch.where(result == 0, torch.ones_like(result) * 1e-8, result).to(y_pred.device)
         result = result.sum(0)
-        result = -torch.log(result.sum(0)).to(y_pred.device)
+        result = -torch.log(result).to(y_pred.device)
         return result
 
     def update(self, y_pred, y_true, **kwargs):

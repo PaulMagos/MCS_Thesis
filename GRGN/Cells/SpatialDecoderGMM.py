@@ -5,7 +5,7 @@ from tsl.nn.layers.graph_convs import DiffConv
 from torch_geometric.typing import OptTensor, Adj
 from torch import LongTensor, Tensor
 from torch_sparse import SparseTensor, remove_diag
-from torch.nn import Module, Linear, PReLU
+from torch.nn import Module, Linear, Tanh
 from .GMMCell import GMMCell
 from typing import Optional
 import torch
@@ -29,7 +29,7 @@ class SpatialDecoderGMM(Module):
         self.n_nodes = n_nodes
 
         # Input channels of convolution
-        in_channels = input_size + (input_size + 2) * num_components + hidden_size
+        in_channels = input_size + (input_size * 2 + 1) * num_components + hidden_size
         
         #
         self.lin_in = Linear(in_channels, hidden_size * input_size)
@@ -41,7 +41,7 @@ class SpatialDecoderGMM(Module):
         
         self.gmm = GMMCell(input_size, n_nodes, 2 * hidden_size, num_components)
         
-        # self.activation = PReLU()
+        self.activation = Tanh()
         
     def __repr__(self):
         attrs = ['input_size', 'hidden_size', 'output_size', 'order', 'num_components']
@@ -92,7 +92,8 @@ class SpatialDecoderGMM(Module):
             out = self.graph_conv(x_in, edge_index, edge_weight)
         
         out1 = torch.cat([out, h], dim=-1)
+        out = self.activation(out1)
+        h = self.activation(h)
         out = self.gmm(out1)
         # out = torch.cat([out, h] , dim=-1)
-        # out = self.activation(out)
         return out, out1, h
