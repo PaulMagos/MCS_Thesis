@@ -5,7 +5,9 @@ from sklearn.decomposition import PCA
 from sklearn.manifold import TSNE
 
 # Function to plot raw time series of original and generated datasets
-def plot_raw_time_series(original_data, generated_data, feature_name, time_col):
+def plot_raw_time_series(original_data, generated_data, feature_name, time_col,
+                  original_label='Original',
+                  generated_label='Generated'):
     """
     Plots the raw time series for the original and generated datasets.
     :param original_data: pd.DataFrame or np.array, original dataset with time steps.
@@ -16,11 +18,11 @@ def plot_raw_time_series(original_data, generated_data, feature_name, time_col):
     plt.figure(figsize=(10, 6))
     
     if isinstance(original_data, pd.DataFrame):
-        plt.plot(original_data.index, original_data[feature_name], label='Original')
-        plt.plot(generated_data.index, generated_data[feature_name], label='Generated')
+        plt.plot(original_data.index, original_data[feature_name], label=original_label)
+        plt.plot(generated_data.index, generated_data[feature_name], label=generated_label)
     else:
-        plt.plot(original_data[:, 0], original_data[:, 1], label='Original')
-        plt.plot(generated_data[:, 0], generated_data[:, 1], label='Generated')
+        plt.plot(original_data[:, 0], original_data[:, 1], label=original_label)
+        plt.plot(generated_data[:, 0], generated_data[:, 1], label=generated_label)
     
     plt.xlabel('Time')
     plt.ylabel(feature_name)
@@ -29,7 +31,10 @@ def plot_raw_time_series(original_data, generated_data, feature_name, time_col):
     plt.show()
 
 # Function to plot histograms for a given feature in original and generated datasets
-def plot_histograms(original_data, generated_data, feature_name):
+def plot_histograms(original_data, generated_data, feature_name,
+                  original_label='Original',
+                  generated_label='Generated'
+                  ):
     """
     Plots histograms for a specified feature from both original and generated datasets.
     :param original_data: pd.DataFrame or np.array, original dataset.
@@ -39,11 +44,11 @@ def plot_histograms(original_data, generated_data, feature_name):
     plt.figure(figsize=(10, 6))
     
     if isinstance(original_data, pd.DataFrame):
-        plt.hist(original_data[feature_name], bins=50, alpha=0.5, label='Original', density=True)
-        plt.hist(generated_data[feature_name], bins=50, alpha=0.5, label='Generated', density=True)
+        plt.hist(original_data[feature_name], bins=50, alpha=0.5, label=original_label, density=True)
+        plt.hist(generated_data[feature_name], bins=50, alpha=0.5, label=generated_label, density=True)
     else:
-        plt.hist(original_data, bins=50, alpha=0.5, label='Original', density=True)
-        plt.hist(generated_data, bins=50, alpha=0.5, label='Generated', density=True)
+        plt.hist(original_data, bins=50, alpha=0.5, label=original_label, density=True)
+        plt.hist(generated_data, bins=50, alpha=0.5, label=generated_label, density=True)
     
     plt.xlabel(feature_name)
     plt.ylabel('Density')
@@ -52,7 +57,10 @@ def plot_histograms(original_data, generated_data, feature_name):
     plt.show()
 
 # Function to create box plots comparing original and generated datasets
-def plot_boxplots(original_data, generated_data, feature_name):
+def plot_boxplots(original_data, generated_data, feature_name,
+                  original_label='Original',
+                  generated_label='Generated'
+                  ):
     """
     Plots boxplots for the specified feature from both original and generated datasets.
     :param original_data: pd.DataFrame or np.array, original dataset.
@@ -64,14 +72,14 @@ def plot_boxplots(original_data, generated_data, feature_name):
     
     if isinstance(original_data, pd.DataFrame):
         data_to_plot.append(original_data[feature_name])
-        labels.append('Original')
+        labels.append(original_label)
         data_to_plot.append(generated_data[feature_name])
-        labels.append('Generated')
+        labels.append(generated_label)
     else:
         data_to_plot.append(original_data)
-        labels.append('Original')
+        labels.append(original_label)
         data_to_plot.append(generated_data)
-        labels.append('Generated')
+        labels.append(generated_label)
     
     plt.figure(figsize=(10, 6))
     plt.boxplot(data_to_plot, labels=labels)
@@ -80,7 +88,10 @@ def plot_boxplots(original_data, generated_data, feature_name):
     plt.show()
 
 # Function to apply PCA and plot a 2D projection for original and generated datasets
-def plot_pca(original_data, generated_data):
+def plot_pca(original_data, generated_data, 
+             original_label='Original', 
+             generated_label='Generated', 
+             custom_title=''):
     """
     Applies PCA to both original and generated datasets and plots the 2D projection.
     :param original_data: pd.DataFrame or np.array, original dataset.
@@ -92,34 +103,50 @@ def plot_pca(original_data, generated_data):
     generated_pca = pca.fit_transform(generated_data)
     
     plt.figure(figsize=(10, 6))
-    plt.scatter(original_pca[:, 0], original_pca[:, 1], alpha=0.6, label='Original', c='blue')
-    plt.scatter(generated_pca[:, 0], generated_pca[:, 1], alpha=0.6, label='Generated', c='red')
+    plt.scatter(original_pca[:, 0], original_pca[:, 1], alpha=0.6, label=original_label, c='gray')
+    plt.scatter(generated_pca[:, 0], generated_pca[:, 1], alpha=0.4, label=generated_label, c='red')
     
     plt.xlabel('Principal Component 1')
     plt.ylabel('Principal Component 2')
-    plt.title('PCA 2D Projection: Original vs Generated')
+    if custom_title!='':
+        plt.title(custom_title)
+    else:
+        plt.title(f'PCA Projection: {original_label} vs {generated_label}')
     plt.legend()
     plt.show()
 
 # Function to apply t-SNE and plot a 2D projection for original and generated datasets
-def plot_tsne(original_data, generated_data):
+def plot_tsne(original_data, generated_data, 
+              original_label='Original',
+              generated_label='Generated',
+              custom_title=''):
     """
     Applies t-SNE to both original and generated datasets and plots the 2D projection.
     :param original_data: pd.DataFrame or np.array, original dataset.
     :param generated_data: pd.DataFrame or np.array, generated dataset.
     """
-    tsne = TSNE(n_components=2, perplexity=30, n_iter=1000, random_state=42)
+    length = len(generated_data)
+    tsne = TSNE(n_components=2, perplexity=15, n_iter=1000, random_state=42)
+    if length<=1500:
+        tsne = TSNE(n_components=2, perplexity=10, n_iter=1500, random_state=42)
+    elif 5000>length>1500:
+        tsne = TSNE(n_components=2, perplexity=20, n_iter=1000, random_state=42)
+    else:
+        tsne = TSNE(n_components=2, perplexity=50, n_iter=2000, metric='cosine', random_state=42)
     
     original_tsne = tsne.fit_transform(original_data)
     generated_tsne = tsne.fit_transform(generated_data)
     
     plt.figure(figsize=(10, 6))
-    plt.scatter(original_tsne[:, 0], original_tsne[:, 1], alpha=0.6, label='Original', c='blue')
-    plt.scatter(generated_tsne[:, 0], generated_tsne[:, 1], alpha=0.6, label='Generated', c='red')
+    plt.scatter(original_tsne[:, 0], original_tsne[:, 1], alpha=0.6, label=original_label, c='gray')
+    plt.scatter(generated_tsne[:, 0], generated_tsne[:, 1], alpha=0.4, label=generated_label, c='red')
     
     plt.xlabel('t-SNE Component 1')
     plt.ylabel('t-SNE Component 2')
-    plt.title('t-SNE 2D Projection: Original vs Generated')
+    if custom_title!='':
+        plt.title(custom_title)
+    else:
+        plt.title(f't-SNE Projection: {original_label} vs {generated_label}')
     plt.legend()
     plt.show()
 

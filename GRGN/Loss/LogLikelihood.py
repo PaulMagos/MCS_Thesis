@@ -52,7 +52,7 @@ class LogLikelihood(Metric):
             y_true_local = y_true.view(-1, D * y_true.shape[-1])
             mu = y_pred[..., D*m:(m+1)*D]
             sigma = y_pred[..., D*M+(D*m): D*M+D*(m+1)]
-            alpha = y_pred[..., (D*2)*M+m]
+            alpha = y_pred[..., (D*2)*M+(D*m) : (D*2)*M+(D*(m+1))]
             
             # sqrt = torch.sqrt(2. * torch.tensor(np.pi))
             # Calculate exponent term
@@ -70,7 +70,7 @@ class LogLikelihood(Metric):
             return loss.sum(-1)
 
         D = y_true.shape[-1]
-        M = y_pred.shape[-1] // ((D * 2)+1)
+        M = y_pred.shape[-1] // (D * 3)
         y_pred = reshape_to_original(y_pred, y_true.shape[-2], D, M)
         D = y_true.shape[-1] * y_true.shape[-2]
         

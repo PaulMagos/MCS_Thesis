@@ -90,32 +90,41 @@ class GRGNModel(BaseModel):
         return torch.cat([prediction, generation], dim=-1)
     
     def predict(self,
-                x: Tensor,
+                X: Tensor,
                 edge_index: Adj,
                 edge_weight: OptTensor = None,
                 method: str = 'mean',
                 u: OptTensor = None, 
-                first_part=False) -> Tensor:
+                encoder_only=False,
+                both_mean=False
+                ) -> Tensor:
         """"""
-        out = self.forward(x=x,
+        out = self.forward(x=X,
                             u=u,
                             edge_index=edge_index,
                             edge_weight=edge_weight)
-
-        if first_part:
-            out1 = out[..., (self.input_size * 2 + 1) * self.M:]
-        else:
-            out1 = out[..., :(self.input_size * 2 + 1) * self.M]
         
-        D = x.shape[-1]
-        M = out1.shape[-1] // ((D*2)+1)
-        out1 = reshape_to_original(out1, x.shape[-2], D, M)
-        D = x.shape[-1] * x.shape[-2]
-    
-        means = out1[..., :self.M*D].reshape(-1, M, D)
-        stds  = out1[..., self.M*D:self.M * (D*2)].reshape(-1, M, D)
-        # stds  = out1[..., self.M*D:self.M * (D+2)].unsqueeze(-1)
-        weights = out1[..., self.M*(D*2):].unsqueeze(-1)
+        input_features = X.shape[-1]
+        D = X.shape[-1] * X.shape[-2]
+
+        if both_mean and not both_mean:
+            out1 = (out[..., :(self.input_size * 3) * self.M] + out[..., (self.input_size * 3) * self.M:])/2
+        else:
+            if encoder_only:
+                out1 = out[..., :(self.input_size * 3) * self.M]
+            else:
+                out1 = out[..., (self.input_size * 3) * self.M:]
+        
+        M = out1.shape[-1] // (input_features*3)
+        stds_index = self.M*D
+        weights_index = self.M*(D*2)
+
+        out1 = reshape_to_original(out1, X.shape[-2], input_features, M)
+        
+        means = out1[..., :stds_index].reshape(-1, M, D)
+        stds  = out1[..., stds_index:weights_index].reshape(-1, M, D)
+        weights = out1[..., weights_index:].reshape(-1, M, D)
+        
         means = torch.where(torch.isnan(means) | torch.isinf(means), torch.zeros_like(means), means).to(means.device)
         stds = torch.where(torch.isnan(stds) | torch.isinf(stds), torch.zeros_like(stds), stds).to(stds.device)
         weights = torch.where(torch.isnan(weights) | torch.isinf(weights), torch.zeros_like(weights), weights).to(weights.device)
@@ -136,34 +145,41 @@ class GRGNModel(BaseModel):
                    u: OptTensor = None,
                    method: str = 'mean',
                    steps: int = 32, 
-                   first_part = False
+                   encoder_only = False,
+                   both_mean = False
                    ) -> Tensor:
     
         nextval = X
         output = []
         output_not_computed = []
-        with tqdm(len(range(0, steps)), total=steps-1, desc='Generating', unit='step') as t:
+        input_features = X.shape[-1]
+        D = X.shape[-1] * X.shape[-2]
+        
+        with tqdm(len(range(0, steps)), total=steps, desc='Generating', unit='step') as t:
             for i in range(steps):
                 out = self.forward(x=nextval,
                             u=u,
                             edge_index=edge_index,
                             edge_weight=edge_weight
                             )
-
-                if first_part:
-                    out1 = out[..., (self.input_size * 2 + 1) * self.M:]
+                if both_mean and not both_mean:
+                    out1 = (out[..., :(self.input_size * 3) * self.M] + out[..., (self.input_size * 3) * self.M:])/2
                 else:
-                    out1 = out[..., :(self.input_size * 2 + 1) * self.M]
+                    if encoder_only:
+                        out1 = out[..., :(self.input_size * 3) * self.M]
+                    else:
+                        out1 = out[..., (self.input_size * 3) * self.M:(self.input_size * 3) * self.M*2]
+                    
+                if i==0:
+                    M = out1.shape[-1] // (input_features*3)
+                    stds_index = self.M*D
+                    weights_index = self.M*(D*2)
+
+                out1 = reshape_to_original(out1, X.shape[-2], input_features, M)
                 
-                D = X.shape[-1]
-                M = out1.shape[-1] // ((D*2)+1)
-                out1 = reshape_to_original(out1, X.shape[-2], D, M)
-                D = X.shape[-1] * X.shape[-2]
-                
-                means = out1[..., :self.M*D].reshape(-1, M, D)
-                stds  = out1[..., self.M*D:self.M * (D*2)].reshape(-1, M, D)
-                # stds  = out1[..., self.M*D:self.M * (D+2)].unsqueeze(-1)
-                weights = out1[..., self.M*(D*2):].unsqueeze(-1)
+                means = out1[..., :stds_index].reshape(-1, M, D)
+                stds  = out1[..., stds_index:weights_index].reshape(-1, M, D)
+                weights = out1[..., weights_index:].reshape(-1, M, D)
                 
                 means = torch.where(torch.isnan(means) | torch.isinf(means), torch.zeros_like(means), means).to(means.device)
                 stds = torch.where(torch.isnan(stds) | torch.isinf(stds), torch.zeros_like(stds), stds).to(stds.device)
@@ -190,13 +206,18 @@ class GRGNModel(BaseModel):
                    edge_weight: OptTensor = None,
                    u: OptTensor = None,
                    method: str = 'mean',
-                   first_part = False
+                   encoder_only = False,
+                   both_mean=False
                    ) -> Tensor:
     
         nextval = X
         output = []
         output_not_computed = []
         steps = X.shape[0]
+        
+        input_features = X.shape[-1]
+        D = X.shape[-1] * X.shape[-2]
+        
         with tqdm(len(range(0, steps)), total=steps, desc='Predicting', unit='step') as t:
             for i in range(steps):
                 nextval = X[i].reshape(1, 1, X.shape[-2], 1)
@@ -206,19 +227,24 @@ class GRGNModel(BaseModel):
                             edge_weight=edge_weight
                             )
 
-                if first_part:
-                    out1 = out[..., (self.input_size * 2 + 1) * self.M:]
+                if both_mean and not encoder_only:
+                    out1 = (out[..., :(self.input_size * 3) * self.M] + out[..., (self.input_size * 3) * self.M:])/2
                 else:
-                    out1 = out[..., :(self.input_size * 2 + 1) * self.M]
+                    if encoder_only:
+                        out1 = out[..., :(self.input_size * 3) * self.M]
+                    else:
+                        out1 = out[..., (self.input_size * 3) * self.M:]
                 
-                D = X.shape[-1]
-                M = out1.shape[-1] // ((D*2) + 1)
-                out1 = reshape_to_original(out1, X.shape[-2], D, M)
-                D = X.shape[-1] * X.shape[-2]
+                if i==0:
+                    M = out1.shape[-1] // (input_features*3)
+                    stds_index = self.M*D
+                    weights_index = self.M*(D*2)
+
+                out1 = reshape_to_original(out1, X.shape[-2], input_features, M)
                 
-                means = out1[..., :self.M*D].reshape(-1, M, D)
-                stds  = out1[..., self.M*D:self.M * (D*2)].reshape(-1, M, D)
-                weights = out1[..., self.M*(D*2):].unsqueeze(-1)
+                means = out1[..., :stds_index].reshape(-1, M, D)
+                stds  = out1[..., stds_index:weights_index].reshape(-1, M, D)
+                weights = out1[..., weights_index:].reshape(-1, M, D)
                 
                 means = torch.where(torch.isnan(means) | torch.isinf(means), torch.zeros_like(means), means).to(means.device)
                 stds = torch.where(torch.isnan(stds) | torch.isinf(stds), torch.zeros_like(stds), stds).to(stds.device)
