@@ -47,9 +47,9 @@ class LogLikelihood(Metric):
         firts_pred = y_pred.shape[-1]//4
         if self.encoder_only:
             y_pred_fwd = y_pred[..., :firts_pred]
-            y_pred_bwd = y_pred[..., firts_pred:firts_pred*2]
+            y_pred_bwd = y_pred[..., 2*firts_pred:3*firts_pred]
         else:
-            y_pred_fwd = y_pred[..., 2*firts_pred:3*firts_pred]
+            y_pred_fwd = y_pred[..., firts_pred:firts_pred*2]
             y_pred_bwd = y_pred[..., 3*firts_pred:]
         
         def loss(m, M, D, y_true, y_pred):
