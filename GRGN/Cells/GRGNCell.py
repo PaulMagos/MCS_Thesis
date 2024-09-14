@@ -5,7 +5,7 @@ from .SpatialDecoderGMM import SpatialDecoderGMM
 from tsl.nn.layers import NodeEmbedding
 from .DCGRNNCell import DCGRNNNCell
 from tsl.nn.layers.norm import LayerNorm
-from torch.nn import Module, ModuleList, Identity, Dropout, Linear
+from torch.nn import Module, ModuleList, Identity, Dropout, Linear, Tanh
 from .GMMCell import GMMCell
 from torch_geometric.typing import Adj, OptTensor
 
@@ -32,8 +32,7 @@ class GRGNCell(Module):
         self.kernel_size = kernel_size
         
         # Dimension of the output of first stage (input of second stage) + imput dimension
-        rnn_input_size = hidden_size + (self.input_size * 3) * self.mixture_size
-        
+        rnn_input_size = hidden_size + GMMCell.calculate_output_shape(input_size, mixture_size)
         self.cells = ModuleList()
         self.norms = ModuleList()
         

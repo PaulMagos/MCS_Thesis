@@ -6,13 +6,15 @@ from torchmetrics import Metric
 from GRGN.Utils.reshapes import reshape_to_original
 
 class LogLikelihood(Metric):
-    def __init__(self, encoder_only: bool = False, both = False, **kwargs: Any):
+    def __init__(self, encoder_only: bool = False, both: bool = False, weights_mode: str = 'weighted', **kwargs: Any):
         # set 'full_state_update' before Metric instantiation
         super(LogLikelihood, self).__init__(**kwargs)
         
         self.encoder_only = encoder_only
         
         self.both = both
+        
+        self.weights_mode = weights_mode
         
         self.sqrt = torch.sqrt(2. * torch.tensor(np.pi))
         
@@ -42,19 +44,33 @@ class LogLikelihood(Metric):
         M features as mixture components of the GMM. 
         """
         self.sqrt = self.sqrt.to(y_pred.device)
-        firts_pred = y_pred.shape[-1]//2
+        firts_pred = y_pred.shape[-1]//4
         if self.encoder_only:
-            y_pred = y_pred[..., :firts_pred]
+            y_pred_fwd = y_pred[..., :firts_pred]
+            y_pred_bwd = y_pred[..., firts_pred:firts_pred*2]
         else:
-            y_pred = y_pred[..., firts_pred:]
+            y_pred_fwd = y_pred[..., 2*firts_pred:3*firts_pred]
+            y_pred_bwd = y_pred[..., 3*firts_pred:]
         
         def loss(m, M, D, y_true, y_pred):
             y_true_local = y_true.view(-1, D * y_true.shape[-1])
-            mu = y_pred[..., D*m:(m+1)*D]
-            sigma = y_pred[..., D*M+(D*m): D*M+D*(m+1)]
-            alpha = y_pred[..., (D*2)*M+(D*m) : (D*2)*M+(D*(m+1))]
             
-            # sqrt = torch.sqrt(2. * torch.tensor(np.pi))
+            start_index_gaussian = D*m
+            end_index_gaussian = D*(m+1)
+            
+            sigma_index = D*M
+            alpha_index = D*M*2
+            
+            mu = y_pred[..., start_index_gaussian:end_index_gaussian]
+            sigma = y_pred[..., sigma_index+start_index_gaussian: sigma_index+end_index_gaussian]
+            match(self.weights_mode):
+                case 'weighted':
+                    alpha = y_pred[..., alpha_index+m]
+                case 'uniform':
+                    alpha = 1.
+                case 'equal_probability':
+                    alpha = 1 / M
+            
             # Calculate exponent term
             exponent = -torch.sum((mu - y_true_local)**2, -1) / (2*sigma**2)
             # Handle potential NaN or Inf values in exponent
@@ -67,18 +83,23 @@ class LogLikelihood(Metric):
             loss = left * torch.exp(exponent)
             # Handle potential NaN or Inf values in loss
             loss = torch.where(torch.isnan(loss) | torch.isinf(loss), torch.zeros_like(loss), loss).to(y_pred.device)
-            return loss.sum(-1)
+            dimensions = [i for i in range(len(loss.shape))]
+            return loss.mean(dim=dimensions)
 
         D = y_true.shape[-1]
-        M = y_pred.shape[-1] // (D * 3)
-        y_pred = reshape_to_original(y_pred, y_true.shape[-2], D, M)
+        M = y_pred_fwd.shape[-1] // ((D*2) + 1)
+        y_pred_fwd = reshape_to_original(y_pred_fwd, y_true.shape[-2], D, M)
+        y_pred_bwd = reshape_to_original(y_pred_bwd, y_true.shape[-2], D, M)
         D = y_true.shape[-1] * y_true.shape[-2]
         
-        new_shape = (M, 1)
+        new_shape = (M*2, 1)
         
         result = torch.zeros(new_shape).to(y_pred.device)
         for m in range(M):
-            result[m] = loss(m, M, D, y_true, y_pred)
+            result[m] = loss(m, M, D, y_true, y_pred_fwd)
+            result[m+M] = loss(m, M, D, y_true, y_pred_bwd)
+            
+        result = (result[:M] + result[M:])/2
             
         # Handling NaN and Inf values
         result = torch.where(torch.isnan(result) | torch.isinf(result), torch.zeros_like(result), result).to(y_pred.device)

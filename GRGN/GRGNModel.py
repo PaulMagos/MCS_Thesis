@@ -14,6 +14,7 @@ class GRGNModel(BaseModel):
                 input_size: int,
                 hidden_size: int = 64,
                 mixture_size: int = 32,
+                mixture_weights_mode: str = 'weighted',
                 embedding_size: Optional[int] = None,
                 n_layers: int = 1,
                 n_nodes: Optional[int] = None,
@@ -30,6 +31,10 @@ class GRGNModel(BaseModel):
         self.M = mixture_size
         # Input size of the data
         self.input_size = input_size
+        # Nodes of the graph
+        self.n_nodes = n_nodes
+        
+        self.mixture_weights_mode = mixture_weights_mode
         
         # Forward Step
         self.fwd_grgl = GRGNCell(input_size = input_size, 
@@ -59,8 +64,6 @@ class GRGNModel(BaseModel):
         else:
             self.register_parameter('embedding', None)
             
-        self.out = getattr(torch, 'mean')
-        
     def forward(self,
                 x: Tensor,
                 edge_index: Adj,
@@ -71,89 +74,40 @@ class GRGNModel(BaseModel):
         fwd_out, fwd_pred, fwd_repr, _ = self.fwd_grgl(x,
                                                        edge_index,
                                                        edge_weight,
-                                                       u=u)
+                                                       u=None)
         # Backward
         rev_x = x.flip(1)
-        rev_u = u.flip(1) if u is not None else None
         *bwd, _ = self.bwd_grgl(rev_x,
                                 edge_index,
                                 edge_weight,
-                                u=rev_u)
+                                u=None)
         bwd_out, bwd_pred, bwd_repr = [res.flip(1) for res in bwd]
 
-        generation = torch.stack([fwd_out, bwd_out], dim=-1)
-        generation = self.out(generation, dim=-1)
+        out = torch.cat([fwd_pred, fwd_out, bwd_pred, bwd_out], dim=-1)
         
-        prediction = torch.stack([fwd_pred, bwd_pred], dim=-1)
-        prediction = self.out(prediction, dim=-1)
-
-        return torch.cat([prediction, generation], dim=-1)
-    
-    def predict(self,
-                X: Tensor,
-                edge_index: Adj,
-                edge_weight: OptTensor = None,
-                method: str = 'mean',
-                u: OptTensor = None, 
-                encoder_only=False,
-                both_mean=False
-                ) -> Tensor:
-        """"""
-        out = self.forward(x=X,
-                            u=u,
-                            edge_index=edge_index,
-                            edge_weight=edge_weight)
-        
-        input_features = X.shape[-1]
-        D = X.shape[-1] * X.shape[-2]
-
-        if both_mean and not both_mean:
-            out1 = (out[..., :(self.input_size * 3) * self.M] + out[..., (self.input_size * 3) * self.M:])/2
-        else:
-            if encoder_only:
-                out1 = out[..., :(self.input_size * 3) * self.M]
-            else:
-                out1 = out[..., (self.input_size * 3) * self.M:]
-        
-        M = out1.shape[-1] // (input_features*3)
-        stds_index = self.M*D
-        weights_index = self.M*(D*2)
-
-        out1 = reshape_to_original(out1, X.shape[-2], input_features, M)
-        
-        means = out1[..., :stds_index].reshape(-1, M, D)
-        stds  = out1[..., stds_index:weights_index].reshape(-1, M, D)
-        weights = out1[..., weights_index:].reshape(-1, M, D)
-        
-        means = torch.where(torch.isnan(means) | torch.isinf(means), torch.zeros_like(means), means).to(means.device)
-        stds = torch.where(torch.isnan(stds) | torch.isinf(stds), torch.zeros_like(stds), stds).to(stds.device)
-        weights = torch.where(torch.isnan(weights) | torch.isinf(weights), torch.zeros_like(weights), weights).to(weights.device)
-            
-        pred = weights * torch.normal(means, stds)
-        match(method):
-            case 'mean':
-                pred = torch.mean(pred, axis=1)
-            case 'sum':
-                pred = torch.sum(pred, axis=1)
-        
-        return pred, out
+        return out
     
     def generate(self,
                    X: Tensor,
                    edge_index: Adj,
                    edge_weight: OptTensor = None,
                    u: OptTensor = None,
-                   method: str = 'mean',
                    steps: int = 32, 
                    encoder_only = False,
-                   both_mean = False
+                   both_mean = False,
+                   **kwargs
                    ) -> Tensor:
-    
+        # check if scaler in kwargs is present
+        if 'scaler' in kwargs['kwargs']:
+            scaler = kwargs['kwargs']['scaler']
+            X = scaler.transform(X)
         nextval = X
         output = []
         output_not_computed = []
-        input_features = X.shape[-1]
-        D = X.shape[-1] * X.shape[-2]
+        self.D = X.shape[-1]# * X.shape[-2]
+                
+        self.stds_index = self.M*self.D
+        self.weights_index = self.M*(self.D+1)
         
         with tqdm(len(range(0, steps)), total=steps, desc='Generating', unit='step') as t:
             for i in range(steps):
@@ -162,61 +116,39 @@ class GRGNModel(BaseModel):
                             edge_index=edge_index,
                             edge_weight=edge_weight
                             )
-                if both_mean and not both_mean:
-                    out1 = (out[..., :(self.input_size * 3) * self.M] + out[..., (self.input_size * 3) * self.M:])/2
-                else:
-                    if encoder_only:
-                        out1 = out[..., :(self.input_size * 3) * self.M]
-                    else:
-                        out1 = out[..., (self.input_size * 3) * self.M:(self.input_size * 3) * self.M*2]
-                    
-                if i==0:
-                    M = out1.shape[-1] // (input_features*3)
-                    stds_index = self.M*D
-                    weights_index = self.M*(D*2)
+                
+                gen =  self.get_output(out, both_mean, encoder_only)
 
-                out1 = reshape_to_original(out1, X.shape[-2], input_features, M)
-                
-                means = out1[..., :stds_index].reshape(-1, M, D)
-                stds  = out1[..., stds_index:weights_index].reshape(-1, M, D)
-                weights = out1[..., weights_index:].reshape(-1, M, D)
-                
-                means = torch.where(torch.isnan(means) | torch.isinf(means), torch.zeros_like(means), means).to(means.device)
-                stds = torch.where(torch.isnan(stds) | torch.isinf(stds), torch.zeros_like(stds), stds).to(stds.device)
-                weights = torch.where(torch.isnan(weights) | torch.isinf(weights), torch.zeros_like(weights), weights).to(weights.device)
-                
-                gen = weights * torch.normal(means, stds)
-                
-                match(method):
-                    case 'mean':
-                        gen = torch.mean(gen, axis=1)
-                    case 'sum':
-                        gen = torch.sum(gen, axis=1)
-                        
                 nextval = gen.reshape(1, 1, gen.shape[-1], 1)
                 output.append(nextval)
                 output_not_computed.append(out)
                 t.update(1)
-        
-        return output, output_not_computed
+        output = torch.cat(output)
+        if 'scaler' in kwargs['kwargs']:
+            output = scaler.inverse_transform(output)
+        return output
 
-    def predict_iter(self,
+    def predict(self,
                    X: Tensor,
                    edge_index: Adj,
                    edge_weight: OptTensor = None,
                    u: OptTensor = None,
-                   method: str = 'mean',
                    encoder_only = False,
-                   both_mean=False
+                   both_mean=False,
+                   **kwargs
                    ) -> Tensor:
-    
+        if 'scaler' in kwargs['kwargs']:
+            scaler = kwargs['kwargs']['scaler']
+            X = scaler.transform(X)
         nextval = X
         output = []
         output_not_computed = []
         steps = X.shape[0]
         
-        input_features = X.shape[-1]
-        D = X.shape[-1] * X.shape[-2]
+        self.D = X.shape[-1]# * X.shape[-2]
+        
+        self.stds_index = self.M*self.D
+        self.weights_index = self.M*(self.D+1)
         
         with tqdm(len(range(0, steps)), total=steps, desc='Predicting', unit='step') as t:
             for i in range(steps):
@@ -226,40 +158,53 @@ class GRGNModel(BaseModel):
                             edge_index=edge_index,
                             edge_weight=edge_weight
                             )
-
-                if both_mean and not encoder_only:
-                    out1 = (out[..., :(self.input_size * 3) * self.M] + out[..., (self.input_size * 3) * self.M:])/2
-                else:
-                    if encoder_only:
-                        out1 = out[..., :(self.input_size * 3) * self.M]
-                    else:
-                        out1 = out[..., (self.input_size * 3) * self.M:]
                 
-                if i==0:
-                    M = out1.shape[-1] // (input_features*3)
-                    stds_index = self.M*D
-                    weights_index = self.M*(D*2)
-
-                out1 = reshape_to_original(out1, X.shape[-2], input_features, M)
-                
-                means = out1[..., :stds_index].reshape(-1, M, D)
-                stds  = out1[..., stds_index:weights_index].reshape(-1, M, D)
-                weights = out1[..., weights_index:].reshape(-1, M, D)
-                
-                means = torch.where(torch.isnan(means) | torch.isinf(means), torch.zeros_like(means), means).to(means.device)
-                stds = torch.where(torch.isnan(stds) | torch.isinf(stds), torch.zeros_like(stds), stds).to(stds.device)
-                weights = torch.where(torch.isnan(weights) | torch.isinf(weights), torch.zeros_like(weights), weights).to(weights.device)
-                
-                gen = weights * torch.normal(means, stds)
-                
-                match(method):
-                    case 'mean':
-                        gen = torch.mean(gen, axis=1)
-                    case 'sum':
-                        gen = torch.sum(gen, axis=1)
+                gen =  self.get_output(out, both_mean, encoder_only)
                         
                 output.append(gen.reshape(1, 1, gen.shape[-1], 1))
                 output_not_computed.append(out)
                 t.update(1)
+        output = torch.cat(output)
+        if 'scaler' in kwargs['kwargs']:
+            output = scaler.inverse_transform(output)
+        return output
+    
+    
+    def get_output(self, out, both_mean, encoder_only):
+        pred_index = (self.input_size * 2) * self.M + self.M
+        if both_mean and not both_mean:
+            out_fwd = (out[..., :pred_index] + out[..., pred_index:2*pred_index])/2
+            out_bwd = (out[..., 2*pred_index:3*pred_index] + out[..., 3*pred_index:])/2
+            out1 = (out_fwd + out_bwd)/2
+        else:
+            if encoder_only:
+                enc_fwd = out[..., :pred_index]
+                enc_bwd = out[..., 2*pred_index:3*pred_index]
+                out1 = (enc_fwd + enc_bwd)/2
+            else:
+                dec_bwd  = out[..., pred_index:2*pred_index]
+                dec_fwd = out[..., 3*pred_index:]
+                out1 = (dec_bwd + dec_fwd)/2
+            
+        # out1 = reshape_to_original(out1, self.n_nodes, self.input_size, self.M)  
         
-        return output, output_not_computed
+        means = out1[..., :self.stds_index]#.reshape(-1, self.M, self.D)
+        stds  = out1[..., self.stds_index:self.weights_index]#.unsqueeze(-1)
+        weights = out1[..., self.weights_index:]#.unsqueeze(-1)
+        
+        means = torch.where(torch.isnan(means) | torch.isinf(means), torch.zeros_like(means), means).to(means.device)
+        stds = torch.where(torch.isnan(stds) | torch.isinf(stds), torch.zeros_like(stds), stds).to(stds.device)
+        weights = torch.where(torch.isnan(weights) | torch.isinf(weights), torch.zeros_like(weights), weights).to(weights.device)
+           
+        match(self.mixture_weights_mode):
+            case 'weighted':
+                gen = weights * torch.normal(means, stds)
+            case 'uniform':
+                gen = torch.normal(means, stds)
+            case 'equal_probability':
+                weights = torch.ones_like(weights) * 1/self.M
+                gen = weights * torch.normal(means, stds)
+           
+        gen = torch.mean(gen, axis=-1)
+                
+        return gen

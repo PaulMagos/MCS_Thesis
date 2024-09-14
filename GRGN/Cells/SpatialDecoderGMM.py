@@ -29,7 +29,7 @@ class SpatialDecoderGMM(Module):
         self.n_nodes = n_nodes
 
         # Input channels of convolution
-        in_channels = input_size + (input_size * 3) * num_components + hidden_size
+        in_channels = input_size + hidden_size + GMMCell.calculate_output_shape(input_size, num_components)
         
         #
         self.lin_in = Linear(in_channels, hidden_size * input_size)

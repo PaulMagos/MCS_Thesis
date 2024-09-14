@@ -174,35 +174,29 @@ class Generator(pl.LightningModule):
     def generate(self, *args, **kwargs):
         """"""
         generate_fn = self.model.generate
-        if self.filter_forward_kwargs:
-            kwargs = self._filter_forward_kwargs(kwargs)
         return generate_fn(*args, **kwargs)
     
     def predict(self, *args, **kwargs):
         """"""
         predict_fn = self.model.predict
-        if self.filter_forward_kwargs:
-            kwargs = self._filter_forward_kwargs(kwargs)
         return predict_fn(*args, **kwargs)
+    @staticmethod
+    def _clone_metric(metric):
+        metric = metric.clone()
+        metric.reset()
+        return metric
     
-    def predict_iter(self, *args, **kwargs):
-        """"""
-        predict_fn = self.model.predict_iter
-        if self.filter_forward_kwargs:
-            kwargs = self._filter_forward_kwargs(kwargs)
-        return predict_fn(*args, **kwargs)
-
     def _set_metrics(self, metrics):
         self.train_metrics = MetricCollection(
-            metrics={k: m
+            metrics={k: self._clone_metric(m)
                      for k, m in metrics.items()},
             prefix='train_')
         self.val_metrics = MetricCollection(
-            metrics={k: m
+            metrics={k: self._clone_metric(m)
                      for k, m in metrics.items()},
             prefix='val_')
         self.test_metrics = MetricCollection(
-            metrics={k: m
+            metrics={k: self._clone_metric(m)
                      for k, m in metrics.items()},
             prefix='test_')
 
@@ -222,7 +216,7 @@ class Generator(pl.LightningModule):
                  on_step=False,
                  on_epoch=True,
                  logger=True,
-                 prog_bar=False,
+                 prog_bar=True,
                  **kwargs)
 
     def _unpack_batch(self, batch):
@@ -336,18 +330,16 @@ class Generator(pl.LightningModule):
         y_hat_loss = self.predict_batch(batch,
                                         preprocess=False,
                                         postprocess=not self.scale_target)
-        y_hat = y_hat_loss.detach()
 
         # Scale target and output, eventually
         if self.scale_target:
             y_loss = batch.transform['y'].transform(y)
-            y_hat = batch.transform['y'].inverse_transform(y_hat)
 
         # Compute loss
         loss = self.loss_fn(y_hat_loss, y_loss)
 
         # Logging
-        self.train_metrics.update(y_hat, y)
+        self.train_metrics.update(y_hat_loss, y_loss)
         self.log_metrics(self.train_metrics, batch_size=batch.batch_size)
         self.log_loss('train', loss, batch_size=batch.batch_size)
         return loss
@@ -360,18 +352,16 @@ class Generator(pl.LightningModule):
         y_hat_loss = self.predict_batch(batch,
                                         preprocess=False,
                                         postprocess=not self.scale_target)
-        y_hat = y_hat_loss.detach()
 
         # Scale target and output, eventually
         if self.scale_target:
             y_loss = batch.transform['y'].transform(y)
-            y_hat = batch.transform['y'].inverse_transform(y_hat)
 
         # Compute loss
         val_loss = self.loss_fn(y_hat_loss, y_loss)
 
         # Logging
-        self.val_metrics.update(y_hat, y)
+        self.val_metrics.update(y_hat_loss, y_loss)
         self.log_metrics(self.val_metrics, batch_size=batch.batch_size)
         self.log_loss('val', val_loss, batch_size=batch.batch_size)
         return val_loss
@@ -379,11 +369,17 @@ class Generator(pl.LightningModule):
     def test_step(self, batch, batch_idx):
         """"""
         # Compute outputs and rescale
-        y_hat = self.predict_batch(batch, preprocess=False, postprocess=True)
-
-        y = batch.y
-        test_loss = self.loss_fn(y_hat, y)
-
+        y = y_loss = batch.y
+        y_hat_loss = self.predict_batch(batch, preprocess=False, postprocess=not self.scale_target)
+        y_hat = y_hat_loss.detach()
+        
+        # Scale target and output, eventually
+        if self.scale_target:
+            y_loss = batch.transform['y'].transform(y)
+            y_hat = batch.transform['y'].inverse_transform(y_hat)
+            
+        test_loss = self.loss_fn(y_hat_loss, y_loss)
+            
         # Logging
         self.test_metrics.update(y_hat.detach(), y)
         self.log_metrics(self.test_metrics, batch_size=batch.batch_size)
@@ -396,7 +392,7 @@ class Generator(pl.LightningModule):
         y_hat = self.predict_batch(batch, preprocess, postprocess)
         y = batch.y
         self.test_metrics.update(y_hat.detach(), y)
-        metrics_dict = self.test_metrics.compute()
+        metrics_dict = self.train_metrics.compute()
         self.test_metrics.reset()
         return metrics_dict, y_hat
 
