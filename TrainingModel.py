@@ -19,7 +19,7 @@ from torch.utils.data import DataLoader
 
 def get_dataset(dataset_name):
     if dataset_name.lower() == 'airquality':
-        return AirQuality(impute_nans=True, small=True)
+        return AirQuality(small=True)
     elif dataset_name.lower() =='metrla':
         return MetrLA()
     elif dataset_name.lower() =='pemsbay':
