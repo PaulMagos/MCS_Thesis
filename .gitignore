@@ -17,3 +17,4 @@ logs/
 model.onnx
 ViT_torchviz
 ViT_torchviz.png
+lightning_logs/

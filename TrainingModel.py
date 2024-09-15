@@ -35,7 +35,7 @@ class CustomSpatioTemporalDataModule(SpatioTemporalDataModule):
         """"""
         return self.get_dataloader('train', shuffle, batch_size)
 
-def run_imputation(model_params, optim, optim_params, dataset_name, dataset_size, model_name, weights_mode, wandb):
+def run_imputation(model_params, optim, optim_params, epochs, patience, dataset_name, dataset_size, model_name, weights_mode, wandb):
     ########################################
     # data module                          #
     ########################################
@@ -52,18 +52,17 @@ def run_imputation(model_params, optim, optim_params, dataset_name, dataset_size
     'layout': 'edge_index'
     })
 
-    # dataset__ = pd.concat([dataset.dataframe()[-(dataset_size+1):-501], dataset.dataframe()[-dataset_size:-500]], axis=0, ignore_index=True) 
-    # dataset__.reset_index(drop=True, inplace=True)
-    
     # instantiate dataset
+    target = pd.concat([dataset.dataframe()[-(dataset_size+1):-1], dataset.dataframe()[-dataset_size:]], axis=0, ignore_index=True)
+    target = target.reset_index(drop=True)
     
-    torch_dataset = SpatioTemporalDataset(target=dataset.dataframe()[-dataset_size:],
+    torch_dataset = SpatioTemporalDataset(target=target,
                                       covariates=covariates,
                                       connectivity=adj,
                                       window=1,
                                       stride=1)
     
-    splitter = TemporalSplitter(0.2, 0)
+    splitter = TemporalSplitter(0.5, 0)
 
     scalers = {'target': StandardScaler(axis=(0, 1))}
     
@@ -72,7 +71,7 @@ def run_imputation(model_params, optim, optim_params, dataset_name, dataset_size
         splitter=splitter,
         scalers=scalers,
         batch_size=1,
-        workers=32)
+        workers=8)
     dm.setup(stage='fit')
 
     # if cfg.get('in_sample', False):
@@ -97,11 +96,11 @@ def run_imputation(model_params, optim, optim_params, dataset_name, dataset_size
         'Encoder_Loss': LogLikelihood(True, weights_mode=weights_mode),
         'Decoder_Loss': LogLikelihood(False, weights_mode=weights_mode),
         'Mean_Loss': LogLikelihood(both=True, weights_mode=weights_mode),
-        'MSE' : MSE_Custom(mixture_weights_mode=weights_mode)
+        # 'MSE' : MSE_Custom(mixture_weights_mode=weights_mode)
     }
 
     scheduler_class = getattr(torch.optim.lr_scheduler, 'CosineAnnealingLR')
-    scheduler_kwargs = {'eta_min': 0.0001, 'T_max': 50}
+    scheduler_kwargs = {'eta_min': 0.00001, 'T_max': epochs}
 
     # setup generator
     generator = Generator(model_class=model_cls,
@@ -129,7 +128,7 @@ def run_imputation(model_params, optim, optim_params, dataset_name, dataset_size
     ########################################
 
     early_stop_callback = EarlyStopping(monitor='val_loss',
-                                        patience=10,
+                                        patience=patience,
                                         mode='min')
 
     checkpoint_callback = ModelCheckpoint(
@@ -141,7 +140,7 @@ def run_imputation(model_params, optim, optim_params, dataset_name, dataset_size
     )
 
     trainer = Trainer(
-        max_epochs=100,
+        max_epochs=epochs,
         default_root_dir='logs/generation/' + f'{dataset_name}/',
         logger=exp_logger,
         accelerator='gpu' if torch.cuda.is_available() else 'cpu',
@@ -151,7 +150,7 @@ def run_imputation(model_params, optim, optim_params, dataset_name, dataset_size
 
     trainer.fit(generator, datamodule=dm)
     
-    output = trainer.predict(generator, dataloaders=dm.val_dataloader(False))
+    output = trainer.predict(generator, dataloaders=dm.train_dataloader(False))
     output = generator.collate_prediction_outputs(output)
     output = torch_to_numpy(output)
     _, y_true = (output['y_hat'], output['y'])
@@ -159,12 +158,20 @@ def run_imputation(model_params, optim, optim_params, dataset_name, dataset_size
     y_true = torch.Tensor(y_true)
 
     input = y_true[-500:-499]
-    generation = generator.generate(input, torch.tensor(adj[0]), torch.Tensor(adj[1]), None, 'mean', 5000, both_mean=True, kwargs=dict({'scaler': scalers['target']}))
+    generation = generator.generate(input, torch.tensor(adj[0]), torch.Tensor(adj[1]), None, 1000, both_mean=True, kwargs=dict({'scaler': scalers['target']}))
     generation = generation.reshape(generation.shape[0], generation.shape[-2])
     
-    cols = dataset.dataframe().columns
-    df = pd.DataFrame(generation, columns=cols)
-    df.to_csv(f'./Generations/{dataset_name}/Syntetic{dataset_name}_{dataset_size}_{model_name}_GRGN.csv', index=False)
+    df = pd.DataFrame(generation)
+    df.columns = dataset.dataframe().columns.droplevel('channels')
+    df.to_csv(f'./Datasets/GeneratedDatasets/{dataset_name}/syntetic{dataset_name}_{dataset_size}_{model_name}_GRGN.csv', index=False)
+    
+    input = y_true[-500:]
+    prediction = generator.predict(input, torch.tensor(adj[0]), torch.Tensor(adj[1]), both_mean=True, kwargs=dict({'scaler': scalers['target']}))
+    prediction = prediction.reshape(prediction.shape[0], prediction.shape[-2])
+    
+    df = pd.DataFrame(prediction,)
+    df.columns = dataset.dataframe().columns.droplevel('channels')
+    df.to_csv(f'./Datasets/TeachForcingDatasets/{dataset_name}/TeachForcing{dataset_name}_{dataset_size}_{model_name}_GRGN.csv', index=False)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Run generation model')
@@ -176,6 +183,10 @@ if __name__ == '__main__':
                         help='Name of the Dataset')
     parser.add_argument('--mixture_size', '-m', type=int, default=4,
                         help='Size of the mixtures')
+    parser.add_argument('--epochs', type=int, default=50,
+                        help='Number of epochs')
+    parser.add_argument('--patience', type=int, default=10,
+                        help='Early Stopping patience')
     parser.add_argument('--hidden_size', '-hs', type=int, choices=[4, 8, 16, 32, 64], default=16,
                         help='Size of the Hidden')
     parser.add_argument('--size', '-s', type=int, choices=[1000, 2000, 5000, 8000], default=1000,
@@ -200,6 +211,8 @@ if __name__ == '__main__':
         len(f"  Hidden Size:       {args.hidden_size} {check_default(args.hidden_size, 16)}"),
         len(f"  Dataset Size:      {args.size} {check_default(args.size, 1000)}"),
         len(f"  Learning Rate:     {args.learning_rate} {check_default(args.learning_rate, 1e-4)}"),
+        len(f"  Epochs:            {args.epochs} {check_default(args.epochs, 50)}"),
+        len(f"  Patience:            {args.patience} {check_default(args.patience, 10)}"),
         len(f"  Model Name:        {args.model_name} {check_default(args.model_name, 'Model')}")
     ])
 
@@ -209,15 +222,17 @@ if __name__ == '__main__':
     # Pretty printing
     print(f"\n{separator}")
     print("Parsed Arguments")
-    print(f"{separator}")
-    print(f"  Wandb:            {args.wandb} {check_default(args.wandb, False)}")
-    print(f"  Weights Mode:      {args.weights_mode} {check_default(args.weights_mode, 'weighted')}")
-    print(f"  Dataset:           {args.dataset} {check_default(args.dataset, 'AirQuality')}")
-    print(f"  Mixture Size:      {args.mixture_size} {check_default(args.mixture_size, 4)}")
-    print(f"  Hidden Size:       {args.hidden_size} {check_default(args.hidden_size, 16)}")
-    print(f"  Dataset Size:      {args.size} {check_default(args.size, 1000)}")
-    print(f"  Learning Rate:     {args.learning_rate} {check_default(args.learning_rate, 1e-4)}")
     print(f"  Model Name:        {args.model_name} {check_default(args.model_name, 'Model')}")
+    print(f"{separator}")
+    print(f"  Dataset:           {args.dataset} {check_default(args.dataset, 'AirQuality')}")
+    print(f"  Dataset Size:      {args.size} {check_default(args.size, 1000)}")
+    print(f"  Hidden Size:       {args.hidden_size} {check_default(args.hidden_size, 16)}")
+    print(f"  Mixture Size:      {args.mixture_size} {check_default(args.mixture_size, 4)}")
+    print(f"  Weights Mode:      {args.weights_mode} {check_default(args.weights_mode, 'weighted')}")
+    print(f"  Learning Rate:     {args.learning_rate} {check_default(args.learning_rate, 1e-4)}")
+    print(f"  Epochs:            {args.epochs} {check_default(args.epochs, 50)}")
+    print(f"  Patience:            {args.patience} {check_default(args.patience, 10)}")
+    print(f"  Wandb:            {args.wandb} {check_default(args.wandb, False)}")
     print(f"{separator}\n")
 
     model_params = {
@@ -229,4 +244,4 @@ if __name__ == '__main__':
     
     optim = 'RMSprop' # SGD or Adam
     
-    res = run_imputation(model_params, optim, optim_params, args.dataset, args.size, args.model_name, args.weights_mode, args.wandb)
+    res = run_imputation(model_params, optim, optim_params, args.epochs, args.patience, args.dataset, args.size, args.model_name, args.weights_mode, args.wandb)

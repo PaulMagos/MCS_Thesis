@@ -33,21 +33,22 @@ class MSE_Custom(Metric):
         
         def loss(y_true, y_pred, M):
             means = y_pred[..., :M]
-            stds  = y_pred[..., M:M*2]
-            weights = y_pred[..., M*2:]
+            stds  = y_pred[..., M]
+            weights = y_pred[..., M+1]
             
             means = torch.where(torch.isnan(means) | torch.isinf(means), torch.zeros_like(means), means).to(means.device)
             stds = torch.where(torch.isnan(stds) | torch.isinf(stds), torch.zeros_like(stds), stds).to(stds.device)
             weights = torch.where(torch.isnan(weights) | torch.isinf(weights), torch.zeros_like(weights), weights).to(weights.device)
             
+            gen = torch.normal(means, stds)
             match(self.mixture_weights_mode):
                 case 'weighted':
-                    gen = weights * torch.normal(means, stds)
+                    gen = weights * gen
                 case 'uniform':
-                    gen = torch.normal(means, stds)
+                    gen = gen
                 case 'equal_probability':
                     weights = torch.ones_like(weights) * 1/self.M
-                    gen = weights * torch.normal(means, stds)
+                    gen = weights * gen
             
             gen = torch.mean(gen, axis=-1)
                     
@@ -56,7 +57,7 @@ class MSE_Custom(Metric):
             return diff
 
         D = y_true.shape[-1]
-        M = y_pred_fwd.shape[-1] // ((D*2) + 1)
+        M = y_pred_fwd.shape[-1] // ((D+2))
         
         fwd_loss = loss(y_true, y_pred_fwd, M)
         bwd_loss = loss(y_true, y_pred_bwd, M)

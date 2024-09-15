@@ -25,6 +25,9 @@ class LogLikelihood(Metric):
                        dist_reduce_fx='sum',
                        default=torch.tensor(0., dtype=torch.float))
         
+    def __call__(self, y_pred: torch.Tensor, y_true: torch.Tensor, **kwargs: Any):
+        return self.loss_function(y_pred, y_true, **kwargs)
+        
     def loss_function (self, y_pred, y_true, **kwargs):
         return self.loss(y_pred, y_true, **kwargs) if not self.both else self.double_loss(y_pred, y_true, **kwargs)
         
@@ -52,24 +55,23 @@ class LogLikelihood(Metric):
             y_pred_fwd = y_pred[..., firts_pred:firts_pred*2]
             y_pred_bwd = y_pred[..., 3*firts_pred:]
         
-        def loss(m, M, D, y_true, y_pred):
+        def loss_inner(m, M, D, y_true, y_pred):
             y_true_local = y_true.view(-1, D * y_true.shape[-1])
             
             start_index_gaussian = D*m
             end_index_gaussian = D*(m+1)
             
             sigma_index = D*M
-            alpha_index = D*M*2
+            alpha_index = (D+1)*M
             
             mu = y_pred[..., start_index_gaussian:end_index_gaussian]
-            sigma = y_pred[..., sigma_index+start_index_gaussian: sigma_index+end_index_gaussian]
+            sigma = y_pred[..., sigma_index]
+            alpha = y_pred[..., alpha_index]
             match(self.weights_mode):
-                case 'weighted':
-                    alpha = y_pred[..., alpha_index+m]
                 case 'uniform':
-                    alpha = 1.
+                    alpha = torch.ones_like(alpha)
                 case 'equal_probability':
-                    alpha = 1 / M
+                    alpha = torch.ones_like(alpha) / M
             
             # Calculate exponent term
             exponent = -torch.sum((mu - y_true_local)**2, -1) / (2*sigma**2)
@@ -87,7 +89,7 @@ class LogLikelihood(Metric):
             return loss.mean(dim=dimensions)
 
         D = y_true.shape[-1]
-        M = y_pred_fwd.shape[-1] // ((D*2) + 1)
+        M = y_pred_fwd.shape[-1] // (D+2)
         y_pred_fwd = reshape_to_original(y_pred_fwd, y_true.shape[-2], D, M)
         y_pred_bwd = reshape_to_original(y_pred_bwd, y_true.shape[-2], D, M)
         D = y_true.shape[-1] * y_true.shape[-2]
@@ -96,8 +98,8 @@ class LogLikelihood(Metric):
         
         result = torch.zeros(new_shape).to(y_pred.device)
         for m in range(M):
-            result[m] = loss(m, M, D, y_true, y_pred_fwd)
-            result[m+M] = loss(m, M, D, y_true, y_pred_bwd)
+            result[m] = loss_inner(m, M, D, y_true, y_pred_fwd)
+            result[m+M] = loss_inner(m, M, D, y_true, y_pred_bwd)
             
         result = (result[:M] + result[M:])/2
             

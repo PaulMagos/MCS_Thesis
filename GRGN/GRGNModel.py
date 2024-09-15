@@ -5,9 +5,8 @@ from tsl.nn.models import BaseModel
 from tsl.nn.layers import NodeEmbedding
 from torch_geometric.typing import Adj, OptTensor
 from .Cells import GRGNCell
-from GRGN.Utils.reshapes import reshape_to_original
 from tqdm import tqdm
-from torch.nn import Linear, Sequential, ReLU, Dropout
+from GRGN.Utils import reshape_to_original
 
 class GRGNModel(BaseModel):
     def __init__(self, 
@@ -33,6 +32,10 @@ class GRGNModel(BaseModel):
         self.input_size = input_size
         # Nodes of the graph
         self.n_nodes = n_nodes
+        
+        self.D = n_nodes
+        self.stds_index = self.M*self.D
+        self.weights_index = self.M*(self.D+1)
         
         self.mixture_weights_mode = mixture_weights_mode
         
@@ -65,146 +68,160 @@ class GRGNModel(BaseModel):
             self.register_parameter('embedding', None)
             
     def forward(self,
-                x: Tensor,
-                edge_index: Adj,
-                edge_weight: OptTensor = None,
-                u: OptTensor = None) -> list:
-        """"""
-        # x: [batch, steps, nodes, channels]
-        fwd_out, fwd_pred, fwd_repr, _ = self.fwd_grgl(x,
-                                                       edge_index,
-                                                       edge_weight,
-                                                       u=None)
-        # Backward
+            x: Tensor,
+            edge_index: Adj,
+            edge_weight: OptTensor = None,
+            u: OptTensor = None) -> Tensor:
+        """
+        Forward and backward pass combining predictions and outputs.
+        """
+        # Forward pass
+        fwd_out, fwd_pred, fwd_repr, _ = self.fwd_grgl(x, edge_index, edge_weight, u=None)
+        
+        # Backward pass (reverse the input in time dimension)
         rev_x = x.flip(1)
-        *bwd, _ = self.bwd_grgl(rev_x,
-                                edge_index,
-                                edge_weight,
-                                u=None)
-        bwd_out, bwd_pred, bwd_repr = [res.flip(1) for res in bwd]
+        bwd_out, bwd_pred, bwd_repr, _ = self.bwd_grgl(rev_x, edge_index, edge_weight, u=None)
+        
+        # Flip backward results back to the original time direction
+        bwd_out, bwd_pred, bwd_repr = [res.flip(1) for res in [bwd_out, bwd_pred, bwd_repr]]
 
+        # Concatenate forward and backward results
         out = torch.cat([fwd_pred, fwd_out, bwd_pred, bwd_out], dim=-1)
         
         return out
-    
+            
     def generate(self,
-                   X: Tensor,
-                   edge_index: Adj,
-                   edge_weight: OptTensor = None,
-                   u: OptTensor = None,
-                   steps: int = 32, 
-                   encoder_only = False,
-                   both_mean = False,
-                   **kwargs
-                   ) -> Tensor:
-        # check if scaler in kwargs is present
-        if 'scaler' in kwargs['kwargs']:
-            scaler = kwargs['kwargs']['scaler']
+             X: Tensor,
+             edge_index: Adj,
+             edge_weight: OptTensor = None,
+             u: OptTensor = None,
+             steps: int = 32,
+             encoder_only: bool = False,
+             both_mean: bool = False,
+             **kwargs) -> Tensor:
+    
+        # Check for the presence of a scaler in kwargs
+        scaler = kwargs.get('scaler')
+        if scaler:
             X = scaler.transform(X)
+        
         nextval = X
         output = []
-        output_not_computed = []
-        self.D = X.shape[-1]# * X.shape[-2]
-                
-        self.stds_index = self.M*self.D
-        self.weights_index = self.M*(self.D+1)
         
-        with tqdm(len(range(0, steps)), total=steps, desc='Generating', unit='step') as t:
-            for i in range(steps):
-                out = self.forward(x=nextval,
-                            u=u,
-                            edge_index=edge_index,
-                            edge_weight=edge_weight
-                            )
+        with tqdm(total=steps, desc='Generating', unit='step') as t:
+            for _ in range(steps):
+                # Forward pass
+                out = self.forward(x=nextval, u=u, edge_index=edge_index, edge_weight=edge_weight)
                 
-                gen =  self.get_output(out, both_mean, encoder_only)
-
-                nextval = gen.reshape(1, 1, gen.shape[-1], 1)
-                output.append(nextval)
-                output_not_computed.append(out)
+                # Get generated output
+                gen = self.get_output(out, both_mean, encoder_only)
+                
+                # Prepare for the next step
+                nextval = gen
+                output.append(gen)
                 t.update(1)
+        
+        # Concatenate and inverse transform if scaler exists
         output = torch.cat(output)
-        if 'scaler' in kwargs['kwargs']:
+        if scaler:
             output = scaler.inverse_transform(output)
+        
         return output
 
     def predict(self,
-                   X: Tensor,
-                   edge_index: Adj,
-                   edge_weight: OptTensor = None,
-                   u: OptTensor = None,
-                   encoder_only = False,
-                   both_mean=False,
-                   **kwargs
-                   ) -> Tensor:
-        if 'scaler' in kwargs['kwargs']:
-            scaler = kwargs['kwargs']['scaler']
+            X: Tensor,
+            edge_index: Adj,
+            edge_weight: OptTensor = None,
+            u: OptTensor = None,
+            encoder_only: bool = False,
+            both_mean: bool = False,
+            **kwargs) -> Tensor:
+        
+        scaler = kwargs.get('scaler')
+        if scaler:
             X = scaler.transform(X)
+        
         nextval = X
         output = []
-        output_not_computed = []
         steps = X.shape[0]
-        
-        self.D = X.shape[-1]# * X.shape[-2]
-        
-        self.stds_index = self.M*self.D
-        self.weights_index = self.M*(self.D+1)
-        
-        with tqdm(len(range(0, steps)), total=steps, desc='Predicting', unit='step') as t:
+
+        with tqdm(total=steps, desc='Predicting', unit='step') as t:
             for i in range(steps):
                 nextval = X[i].reshape(1, 1, X.shape[-2], 1)
-                out = self.forward(x=nextval,
-                            u=u,
-                            edge_index=edge_index,
-                            edge_weight=edge_weight
-                            )
                 
-                gen =  self.get_output(out, both_mean, encoder_only)
-                        
-                output.append(gen.reshape(1, 1, gen.shape[-1], 1))
-                output_not_computed.append(out)
+                # Forward pass
+                out = self.forward(x=nextval, u=None, edge_index=edge_index, edge_weight=edge_weight)
+                
+                # Get generated output
+                gen = self.get_output(out, both_mean, encoder_only)
+                
+                output.append(gen)
                 t.update(1)
+        
+        # Concatenate and inverse transform if scaler exists
         output = torch.cat(output)
-        if 'scaler' in kwargs['kwargs']:
+        if scaler:
             output = scaler.inverse_transform(output)
+        
         return output
     
     
     def get_output(self, out, both_mean, encoder_only):
-        pred_index = (self.input_size * 2) * self.M + self.M
-        if both_mean and not both_mean:
-            out_fwd = (out[..., :pred_index] + out[..., pred_index:2*pred_index])/2
-            out_bwd = (out[..., 2*pred_index:3*pred_index] + out[..., 3*pred_index:])/2
-            out1 = (out_fwd + out_bwd)/2
+        pred_index = (self.input_size + 2) * self.M 
+        
+        # Extract encoder and decoder components
+        enc_fwd, dec_fwd = out[..., :pred_index], out[..., pred_index:2*pred_index]
+        enc_bwd, dec_bwd = out[..., 2*pred_index:3*pred_index], out[..., 3*pred_index:]
+        
+        # Helper function to compute and combine forward and backward components
+        def compute_mean(fwd, bwd):
+            out_fwd, out_bwd = self.compute_for(fwd), self.compute_for(bwd)
+            return torch.mean(torch.cat([out_fwd, out_bwd], axis=-1), axis=-1, keepdim=True)
+
+        # Case where both encoder and decoder mean are needed
+        if both_mean and not encoder_only:
+            output_encoder = compute_mean(enc_fwd, enc_bwd)
+            output_decoder = compute_mean(dec_fwd, dec_bwd)
+            output = torch.mean(torch.cat([output_encoder, output_decoder], axis=-1), axis=-1, keepdim=True)
+        
+        # Case where only encoder is needed
+        elif encoder_only:
+            output = compute_mean(enc_fwd, enc_bwd)
+        
+        # Case where only decoder is needed
         else:
-            if encoder_only:
-                enc_fwd = out[..., :pred_index]
-                enc_bwd = out[..., 2*pred_index:3*pred_index]
-                out1 = (enc_fwd + enc_bwd)/2
-            else:
-                dec_bwd  = out[..., pred_index:2*pred_index]
-                dec_fwd = out[..., 3*pred_index:]
-                out1 = (dec_bwd + dec_fwd)/2
-            
-        # out1 = reshape_to_original(out1, self.n_nodes, self.input_size, self.M)  
+            output = compute_mean(dec_fwd, dec_bwd)
         
-        means = out1[..., :self.stds_index]#.reshape(-1, self.M, self.D)
-        stds  = out1[..., self.stds_index:self.weights_index]#.unsqueeze(-1)
-        weights = out1[..., self.weights_index:]#.unsqueeze(-1)
+        return output
+    
+    def compute_for(self, out):
+        out = reshape_to_original(out, self.n_nodes, self.input_size, self.M)
+        # Extract means, stds, and weights
+        means, stds, weights = out[..., :self.stds_index], out[..., self.stds_index:self.weights_index], out[..., self.weights_index:]
         
-        means = torch.where(torch.isnan(means) | torch.isinf(means), torch.zeros_like(means), means).to(means.device)
-        stds = torch.where(torch.isnan(stds) | torch.isinf(stds), torch.zeros_like(stds), stds).to(stds.device)
-        weights = torch.where(torch.isnan(weights) | torch.isinf(weights), torch.zeros_like(weights), weights).to(weights.device)
-           
-        match(self.mixture_weights_mode):
+        def reshape(tensor):
+            return tensor.reshape(-1, self.M, self.D)
+        
+        # Clean up invalid values (NaN or Inf) in means, stds, and weights
+        def clean_tensor(tensor):
+            return torch.where(torch.isnan(tensor) | torch.isinf(tensor), torch.zeros_like(tensor), tensor).to(tensor.device)
+
+        means, stds, weights = reshape(means), stds.unsqueeze(-1), weights.unsqueeze(-1)
+        means, stds, weights = clean_tensor(means), clean_tensor(stds), clean_tensor(weights)
+
+        normal = torch.normal(means, stds)
+        # Generate output based on mixture weights mode
+        match self.mixture_weights_mode:
             case 'weighted':
-                gen = weights * torch.normal(means, stds)
+                gen = weights * normal
             case 'uniform':
-                gen = torch.normal(means, stds)
+                gen = normal
             case 'equal_probability':
-                weights = torch.ones_like(weights) * 1/self.M
-                gen = weights * torch.normal(means, stds)
-           
-        gen = torch.mean(gen, axis=-1)
-                
+                weights = torch.ones_like(weights) / self.M
+                gen = weights * normal
+        
+        # Compute mean over the last axis and reshape the result
+        gen = torch.mean(gen, axis=1)
+        gen = gen.reshape(1, 1, gen.shape[-1], 1)
+        
         return gen
