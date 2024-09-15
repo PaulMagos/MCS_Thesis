@@ -33,7 +33,7 @@ class CustomSpatioTemporalDataModule(SpatioTemporalDataModule):
                          batch_size: Optional[int] = None) \
             -> Optional[DataLoader]:
         """"""
-        return self.get_dataloader('train', shuffle, batch_size)
+        return self.get_dataloader('train', False, batch_size)
 
 def run_imputation(model_params, optim, optim_params, epochs, patience, dataset_name, dataset_size, model_name, weights_mode, wandb):
     ########################################
@@ -53,8 +53,7 @@ def run_imputation(model_params, optim, optim_params, epochs, patience, dataset_
     })
 
     # instantiate dataset
-    target = pd.concat([dataset.dataframe()[-(dataset_size+1):-1], dataset.dataframe()[-dataset_size:]], axis=0, ignore_index=True)
-    target = target.reset_index(drop=True)
+    target = dataset.dataframe()[-dataset_size:]
     
     torch_dataset = SpatioTemporalDataset(target=target,
                                       covariates=covariates,

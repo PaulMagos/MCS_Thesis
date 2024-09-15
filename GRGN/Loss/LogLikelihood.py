@@ -27,7 +27,7 @@ class LogLikelihood(Metric):
         self.encoder_only = not current_state
         second = self.loss(y_pred, y_true)
         self.encoder_only = current_state
-        return (first + second) / 2
+        return first + second
         
     def loss(self, y_pred, y_true, **kwargs):
         """
@@ -88,12 +88,12 @@ class LogLikelihood(Metric):
             result[m] = loss_inner(m, M, D, y_true, y_pred_fwd)
             result[m + M] = loss_inner(m, M, D, y_true, y_pred_bwd)
         
-        result = (result[:M] + result[M:]) / 2
-        
         result = torch.where(torch.isnan(result) | torch.isinf(result), torch.zeros_like(result), result).to(y_pred.device)
         result = torch.where(result == 0, torch.ones_like(result) * 1e-8, result).to(y_pred.device)
-        result = result.sum(0)
-        result = -torch.log(result).to(y_pred.device)
+
+        result1 = -torch.log(result[:M].sum(0)).to(y_pred.device)
+        result2 = -torch.log(result[M:].sum(0)).to(y_pred.device)
+        result = result1 + result2
         
         return result
 

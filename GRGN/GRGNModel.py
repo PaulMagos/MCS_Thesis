@@ -15,7 +15,7 @@ class GRGNModel(BaseModel):
                 mixture_size: int = 32,
                 mixture_weights_mode: str = 'weighted',
                 exclude_bwd: bool = False,
-                embedding_size: Optional[int] = None,
+                embedding_size: Optional[int] = 2,
                 n_layers: int = 1,
                 n_nodes: Optional[int] = None,
                 kernel_size: int = 2,
@@ -185,14 +185,13 @@ class GRGNModel(BaseModel):
 
         # Case where both encoder and decoder mean are needed
         if both_mean and not encoder_only:
-            output_fwd = compute_mean(enc_fwd, dec_fwd)
-            output_bwd = compute_mean(enc_bwd, dec_bwd)
-            output = torch.mean(torch.cat([output_fwd, output_bwd], axis=-1), axis=-1, keepdim=True)
+            output_encoder = compute_mean(enc_fwd, enc_bwd)
+            output_decoder = compute_mean(dec_fwd, dec_bwd)
+            output = torch.mean(torch.cat([output_encoder, output_decoder], axis=-1), axis=-1, keepdim=True)
         
         # Case where only encoder is needed
         elif encoder_only:
             output = compute_mean(enc_fwd, enc_bwd)
-        
         # Case where only decoder is needed
         else:
             output = compute_mean(dec_fwd, dec_bwd)
