@@ -99,9 +99,12 @@ def plot_pca(original_data, generated_data,
     """
     pca = PCA(n_components=2)
     
-    original_pca = pca.fit_transform(original_data)
-    generated_pca = pca.fit_transform(generated_data)
+    # original_pca = pca.fit_transform(original_data)
+    # generated_pca = pca.fit_transform(generated_data)
     
+    original_pca = pca.fit(original_data)
+    generated_pca = original_pca.transform(generated_data)
+    original_pca = original_pca.transform(original_data)
     plt.figure(figsize=(10, 6))
     plt.scatter(original_pca[:, 0], original_pca[:, 1], alpha=0.6, label=original_label, c='gray')
     plt.scatter(generated_pca[:, 0], generated_pca[:, 1], alpha=0.4, label=generated_label, c='red')
@@ -126,11 +129,11 @@ def plot_tsne(original_data, generated_data,
     :param generated_data: pd.DataFrame or np.array, generated dataset.
     """
     length = len(generated_data)
-    tsne = TSNE(n_components=2, perplexity=15, n_iter=1000, random_state=42)
+    # tsne = TSNE(n_components=2, perplexity=15, n_iter=1000, random_state=42)
     if length<=1500:
-        tsne = TSNE(n_components=2, perplexity=10, n_iter=1500, random_state=42)
+        tsne = TSNE(n_components=2, perplexity=10, n_iter=1000, random_state=42)
     elif 5000>length>1500:
-        tsne = TSNE(n_components=2, perplexity=20, n_iter=1000, random_state=42)
+        tsne = TSNE(n_components=2, perplexity=15, n_iter=1000, random_state=42)
     else:
         tsne = TSNE(n_components=2, perplexity=50, n_iter=2000, metric='cosine', random_state=42)
     

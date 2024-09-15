@@ -74,6 +74,6 @@ def reshape_to_original(final_tensor: torch.Tensor, num_nodes: int, input_shape:
     # original_tensor = torch.cat([means_flat, stds_flat, weights_flat], dim=-1)  # Concatenate stds and means
 
     # original_tensor = torch.cat([means_flat, weights.reshape(-1, weights.shape[-1] * weights.shape[-2])[..., -mixture_size:]], dim=-1)
-    original_tensor = torch.cat([means_flat, stds.reshape(-1, stds.shape[-1] * stds.shape[-2])[..., -mixture_size:], weights.reshape(-1, weights.shape[-1] * weights.shape[-2])[..., -mixture_size:]], dim=-1)
+    original_tensor = torch.cat([means_flat, stds.reshape(-1, stds.shape[-1] * stds.shape[-2])[..., :mixture_size], weights.reshape(-1, weights.shape[-1] * weights.shape[-2])[..., :mixture_size]], dim=-1)
 
     return original_tensor  # Final shape is (1, mixture_size * (num_nodes * input_shape + 2))

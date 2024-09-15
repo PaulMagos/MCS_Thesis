@@ -28,8 +28,9 @@ class GMMCell(Module):
         D = self.n_nodes
         stds_index = D*self.M
         weghts_index = (D + 1)*self.M
+        end_index = (D + 2)*self.M
         out[..., stds_index:weghts_index] = torch.exp(out[..., stds_index:weghts_index])
-        out[..., weghts_index:] = F.softmax(out[..., weghts_index:], dim=-1)
+        out[..., weghts_index:end_index] = F.softmax(out[..., weghts_index:end_index], dim=-1)
         out = reshape_to_nodes(out, self.n_nodes, self.input_size, self.M)
         return out
     

@@ -39,10 +39,10 @@ def basic_statistics_comparison(df_original, df_generated):
 
     for column in df_original.columns:
         stats = pd.concat([stats, pd.DataFrame({
-            'mean': [np.abs(df_original[column].mean() - df_generated[column].mean())],
-            'variance': [np.abs(df_original[column].var() - df_generated[column].var())],
-            'skewness': [np.abs(skew(df_original[column]) - skew(df_generated[column]))],
-            'kurtosis': [np.abs(kurtosis(df_original[column]) - kurtosis(df_generated[column]))]
+            'mean': [df_generated[column].mean()],
+            'variance': [df_generated[column].var()],
+            'skewness': [skew(df_generated[column])],
+            'kurtosis': [kurtosis(df_generated[column])]
         })], ignore_index=True)
         
     return stats['mean'].mean(), stats['variance'].mean(), \
@@ -131,7 +131,7 @@ def inception_score(df_original, df_generated, n_splits=10):
     the score is based on the divergence between individual sample predictions
     and the marginal distribution across all samples.
     """
-    model = MLPClassifier(max_iter=200)
+    model = MLPClassifier(max_iter=500)
     
     df = pd.concat([df_original, df_generated], ignore_index=True).reset_index(drop=True)
     df = df.sample(frac=0.7).reset_index(drop=True)
@@ -144,13 +144,30 @@ def inception_score(df_original, df_generated, n_splits=10):
     for i in range(n_splits):
         split_preds = preds[i::n_splits]
         marginal = np.mean(split_preds, axis=0)
-        kl_div = split_preds * np.log(split_preds / marginal)
+        
+        split_preds = np.where(split_preds==0., 1e-8, split_preds)
+        marginal = np.where(marginal==0., 1e-8, marginal)
+        
+        l = split_preds / marginal
+        log_l =  np.log(l)
+        
+        log_l = np.where(np.isnan(log_l), 1e-8, log_l)
+        
+        kl_div = split_preds * log_l
         kl_sum = np.mean(np.sum(kl_div, axis=1))
         res = np.exp(kl_sum)
         res = np.where(np.isnan(res), 0., res)
         scores.append(res)
         
-    return np.mean(scores), np.std(scores)
+    return np.mean(scores)
+
+def inception_score_iter(df_original, df_generated, n_splits=10, n_iter=5):
+    scores_means = []
+    for _ in range(n_iter):
+        mean = inception_score(df_original, df_generated, n_splits)
+        scores_means.append(mean)
+    return np.mean(scores_means), np.std(scores_means)
+    
 
 # Evaluation Function
 def evaluate_datasets(df_original, df_generated, target_column=None):
@@ -159,7 +176,7 @@ def evaluate_datasets(df_original, df_generated, target_column=None):
     df_original_stats = df_original.drop(columns='gen')    
     df_generated_stats = df_generated.drop(columns='gen')    
     # 1. Basic Statistics
-    report['mean_difference'], report['variance_difference'], report['skewness_difference'], report['kurtosis_difference'] = basic_statistics_comparison(df_original_stats, df_generated_stats)
+    report['mean'], report['variance'], report['skewness'], report['kurtosis'] = basic_statistics_comparison(df_original_stats, df_generated_stats)
     
     # 2. KS Test
     report['ks_test'], report['ks_test_p_value'] = ks_test_comparison(df_original_stats, df_generated_stats)
@@ -171,7 +188,7 @@ def evaluate_datasets(df_original, df_generated, target_column=None):
     report['js_divergence'] = jensen_shannon_divergence(df_original_stats, df_generated_stats)
     
     # 5. Correlation Difference
-    report['correlation_difference'], report['correlation_gen'], report['correlation_original'] = correlation_comparison(df_original_stats, df_generated_stats)
+    report['correlation_difference'], _, _ = correlation_comparison(df_original_stats, df_generated_stats)
 
     # 6. MMD Metrics
     X_original = df_original_stats.to_numpy()
@@ -182,15 +199,15 @@ def evaluate_datasets(df_original, df_generated, target_column=None):
     # report['mmd_poly'] = mmd_poly(X_original, X_generated)
     
     # 7. Inception Score
-    report['inception_score_mean'], report['inception_score_std'] = inception_score(df_original, df_generated)
+    report['inception_score_mean'], report['inception_score_std'] = inception_score_iter(df_original, df_generated)
 
-    t_stat, t_stat_p_value = ttest_ind(df_original_stats, df_generated_stats)
-    report['t_stat'], report['t_stat_p_value'] = np.mean(t_stat), np.mean(t_stat_p_value)
+    # t_stat, t_stat_p_value = ttest_ind(df_original_stats, df_generated_stats)
+    # report['t_stat'], report['t_stat_p_value'] = np.mean(t_stat), np.mean(t_stat_p_value)
 
     # 8. Optional: Model-based evaluation (if target column is provided)
     if target_column:
-        report['model_accuracy'] = train_on_original_test_on_generated(df_original, df_generated, target_column)
-        report['model_accuracy_on_Gen'] = train_on_original_test_on_generated(df_generated, df_original, target_column)
+        # report['model_accuracy'] = train_on_original_test_on_generated(df_original, df_generated, target_column)
+        # report['model_accuracy_on_Gen'] = train_on_original_test_on_generated(df_generated, df_original, target_column)
         
         X = pd.concat([df_original, df_generated]).sample(300).reset_index(drop=True)
         report['model_accuracy_train_on_both'] = train_on_original_test_on_generated(X, df_original, target_column)

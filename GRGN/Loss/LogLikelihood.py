@@ -65,8 +65,8 @@ class LogLikelihood(Metric):
             alpha_index = (D+1)*M
             
             mu = y_pred[..., start_index_gaussian:end_index_gaussian]
-            sigma = y_pred[..., sigma_index]
-            alpha = y_pred[..., alpha_index]
+            sigma = y_pred[..., sigma_index+m]
+            alpha = y_pred[..., alpha_index+m]
             match(self.weights_mode):
                 case 'uniform':
                     alpha = torch.ones_like(alpha)

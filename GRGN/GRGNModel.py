@@ -14,6 +14,7 @@ class GRGNModel(BaseModel):
                 hidden_size: int = 64,
                 mixture_size: int = 32,
                 mixture_weights_mode: str = 'weighted',
+                exclude_bwd: bool = False,
                 embedding_size: Optional[int] = None,
                 n_layers: int = 1,
                 n_nodes: Optional[int] = None,
@@ -32,7 +33,7 @@ class GRGNModel(BaseModel):
         self.input_size = input_size
         # Nodes of the graph
         self.n_nodes = n_nodes
-        
+        self.exclude_bwd = exclude_bwd
         self.D = n_nodes
         self.stds_index = self.M*self.D
         self.weights_index = self.M*(self.D+1)
@@ -49,16 +50,17 @@ class GRGNModel(BaseModel):
                                  n_layers=n_layers,
                                  layer_norm = layer_norm, 
                                  decoder_order = decoder_order)
-        # Backward Step
-        self.bwd_grgl = GRGNCell(input_size = input_size, 
-                                 hidden_size = hidden_size, 
-                                 mixture_size = mixture_size, 
-                                 kernel_size = kernel_size, 
-                                 dropout=dropout,
-                                 n_nodes=n_nodes,
-                                 n_layers=n_layers,
-                                 layer_norm = layer_norm,
-                                 decoder_order = decoder_order)
+        if not exclude_bwd:
+            # Backward Step
+            self.bwd_grgl = GRGNCell(input_size = input_size, 
+                                    hidden_size = hidden_size, 
+                                    mixture_size = mixture_size, 
+                                    kernel_size = kernel_size, 
+                                    dropout=dropout,
+                                    n_nodes=n_nodes,
+                                    n_layers=n_layers,
+                                    layer_norm = layer_norm,
+                                    decoder_order = decoder_order)
         
         
         if embedding_size is not None:
@@ -78,12 +80,15 @@ class GRGNModel(BaseModel):
         # Forward pass
         fwd_out, fwd_pred, fwd_repr, _ = self.fwd_grgl(x, edge_index, edge_weight, u=None)
         
-        # Backward pass (reverse the input in time dimension)
-        rev_x = x.flip(1)
-        bwd_out, bwd_pred, bwd_repr, _ = self.bwd_grgl(rev_x, edge_index, edge_weight, u=None)
-        
-        # Flip backward results back to the original time direction
-        bwd_out, bwd_pred, bwd_repr = [res.flip(1) for res in [bwd_out, bwd_pred, bwd_repr]]
+        if not self.exclude_bwd:
+            # Backward pass (reverse the input in time dimension)
+            rev_x = x.flip(1)
+            bwd_out, bwd_pred, bwd_repr, _ = self.bwd_grgl(rev_x, edge_index, edge_weight, u=None)
+            
+            # Flip backward results back to the original time direction
+            bwd_out, bwd_pred, bwd_repr = [res.flip(1) for res in [bwd_out, bwd_pred, bwd_repr]]
+        else:
+            bwd_out, bwd_pred, bwd_repr = fwd_out, fwd_pred, fwd_repr
 
         # Concatenate forward and backward results
         out = torch.cat([fwd_pred, fwd_out, bwd_pred, bwd_out], dim=-1)
@@ -180,9 +185,9 @@ class GRGNModel(BaseModel):
 
         # Case where both encoder and decoder mean are needed
         if both_mean and not encoder_only:
-            output_encoder = compute_mean(enc_fwd, enc_bwd)
-            output_decoder = compute_mean(dec_fwd, dec_bwd)
-            output = torch.mean(torch.cat([output_encoder, output_decoder], axis=-1), axis=-1, keepdim=True)
+            output_fwd = compute_mean(enc_fwd, dec_fwd)
+            output_bwd = compute_mean(enc_bwd, dec_bwd)
+            output = torch.mean(torch.cat([output_fwd, output_bwd], axis=-1), axis=-1, keepdim=True)
         
         # Case where only encoder is needed
         elif encoder_only:

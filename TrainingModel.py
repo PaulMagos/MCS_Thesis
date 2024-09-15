@@ -177,6 +177,8 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Run generation model')
     parser.add_argument('--wandb', action='store_true', 
                             help='Flag to disable Wandb')
+    parser.add_argument('--nobwd', action='store_true', 
+                            help='Flag to disable backward_model')
     parser.add_argument('--weights_mode', '-w', type=str, choices=['weighted', 'uniform', 'equal_probability'], default='weighted',
                             help='Flag  weights')
     parser.add_argument('--dataset', '-d', type=str, choices=['AirQuality', 'PemsBay', 'MetrLA'], default='AirQuality',
@@ -204,7 +206,8 @@ if __name__ == '__main__':
 
     # Find the length of the longest line
     longest_line = max([
-        len(f"  Wandb:            {args.wandb} {check_default(args.wandb, False)}"),
+        len(f"  Wandb:             {args.wandb} {check_default(args.wandb, False)}"),
+        len(f"  Backward:          {not args.nobwd} {check_default(not args.nobwd, True)}"),
         len(f"  Weights Mode:      {args.weights_mode} {check_default(args.weights_mode, 'weighted')}"),
         len(f"  Dataset:           {args.dataset} {check_default(args.dataset, 'AirQuality')}"),
         len(f"  Mixture Size:      {args.mixture_size} {check_default(args.mixture_size, 4)}"),
@@ -212,7 +215,7 @@ if __name__ == '__main__':
         len(f"  Dataset Size:      {args.size} {check_default(args.size, 1000)}"),
         len(f"  Learning Rate:     {args.learning_rate} {check_default(args.learning_rate, 1e-4)}"),
         len(f"  Epochs:            {args.epochs} {check_default(args.epochs, 50)}"),
-        len(f"  Patience:            {args.patience} {check_default(args.patience, 10)}"),
+        len(f"  Patience:          {args.patience} {check_default(args.patience, 10)}"),
         len(f"  Model Name:        {args.model_name} {check_default(args.model_name, 'Model')}")
     ])
 
@@ -231,14 +234,16 @@ if __name__ == '__main__':
     print(f"  Weights Mode:      {args.weights_mode} {check_default(args.weights_mode, 'weighted')}")
     print(f"  Learning Rate:     {args.learning_rate} {check_default(args.learning_rate, 1e-4)}")
     print(f"  Epochs:            {args.epochs} {check_default(args.epochs, 50)}")
-    print(f"  Patience:            {args.patience} {check_default(args.patience, 10)}")
-    print(f"  Wandb:            {args.wandb} {check_default(args.wandb, False)}")
+    print(f"  Patience:          {args.patience} {check_default(args.patience, 10)}")
+    print(f"  Backward:          {not args.nobwd} {check_default(not args.nobwd, True)}")
+    print(f"  Wandb:             {args.wandb} {check_default(args.wandb, False)}")
     print(f"{separator}\n")
 
     model_params = {
         'hidden_size': args.hidden_size,
         'mixture_size': args.mixture_size,
-        'mixture_weights_mode': args.weights_mode
+        'mixture_weights_mode': args.weights_mode,
+        'exclude_bwd': args.nobwd,
     }
     optim_params = {'lr': args.learning_rate, 'weight_decay': 0.01}
     
