@@ -156,20 +156,20 @@ def run_imputation(model_params, optim, optim_params, epochs, patience, dataset_
     _, y_true = (output['y_hat'], output['y'])
     
     y_true = torch.Tensor(y_true)
-
+    kwargs = {'scaler': scalers['target']}
     input = y_true[-500:-499]
-    generation = generator.generate(input, torch.tensor(adj[0]), torch.Tensor(adj[1]), None, 1000, both_mean=True, kwargs=dict({'scaler': scalers['target']}))
+    generation = generator.generate(input, torch.tensor(adj[0]), torch.Tensor(adj[1]), None, 1000, both_mean=True, **kwargs)
     generation = generation.reshape(generation.shape[0], generation.shape[-2])
     
-    df = pd.DataFrame(generation)
+    df = pd.DataFrame(generation.detach())
     df.columns = dataset.dataframe().columns.droplevel('channels')
     df.to_csv(f'./Datasets/GeneratedDatasets/{dataset_name}/syntetic{dataset_name}_{dataset_size}_{model_name}_GRGN.csv', index=False)
     
     input = y_true[-500:]
-    prediction = generator.predict(input, torch.tensor(adj[0]), torch.Tensor(adj[1]), both_mean=True, kwargs=dict({'scaler': scalers['target']}))
+    prediction = generator.predict(input, torch.tensor(adj[0]), torch.Tensor(adj[1]), both_mean=True, **kwargs)
     prediction = prediction.reshape(prediction.shape[0], prediction.shape[-2])
     
-    df = pd.DataFrame(prediction,)
+    df = pd.DataFrame(prediction.detach())
     df.columns = dataset.dataframe().columns.droplevel('channels')
     df.to_csv(f'./Datasets/TeachForcingDatasets/{dataset_name}/TeachForcing{dataset_name}_{dataset_size}_{model_name}_GRGN.csv', index=False)
 
@@ -191,7 +191,7 @@ if __name__ == '__main__':
                         help='Early Stopping patience')
     parser.add_argument('--hidden_size', '-hs', type=int, choices=[4, 8, 16, 32, 64], default=16,
                         help='Size of the Hidden')
-    parser.add_argument('--size', '-s', type=int, choices=[1000, 2000, 5000, 8000], default=1000,
+    parser.add_argument('--size', '-s', type=int, choices=[600, 1000, 2000, 5000, 8000], default=1000,
                         help='Size of the dataset to use (small or full)')
     parser.add_argument('--learning_rate', '-lr', type=float, choices=[1e-5, 1e-4, 1e-3], default=1e-4,
                         help='Learning rate')
