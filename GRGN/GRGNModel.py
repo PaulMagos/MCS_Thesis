@@ -90,7 +90,7 @@ class GRGNModel(BaseModel):
             bwd_out, bwd_pred, bwd_repr = fwd_out, fwd_pred, fwd_repr
 
         # Concatenate forward and backward results
-        out = torch.cat([fwd_out, bwd_out], dim=-1)
+        out = torch.cat([fwd_out, bwd_out, fwd_pred, bwd_pred], dim=-1)
         
         return out
             
@@ -101,6 +101,7 @@ class GRGNModel(BaseModel):
              u: OptTensor = None,
              steps: int = 32,
              disable_bar = False,
+             enc_dec_mean = False,
              **kwargs) -> Tensor:
     
         # Check for the presence of a scaler in kwargs
@@ -117,7 +118,7 @@ class GRGNModel(BaseModel):
                 out = self.forward(x=nextval, u=u, edge_index=edge_index, edge_weight=edge_weight)
                 
                 # Get generated output
-                gen = self.get_output(out)
+                gen = self.get_output(out, enc_dec_mean)
                 
                 # Prepare for the next step
                 nextval = gen
@@ -136,8 +137,7 @@ class GRGNModel(BaseModel):
             edge_index: Adj,
             edge_weight: OptTensor = None,
             u: OptTensor = None,
-            encoder_only: bool = False,
-            both_mean: bool = False,
+            enc_dec_mean: bool = False,
             **kwargs) -> Tensor:
         
         scaler = kwargs.get('scaler')
@@ -156,7 +156,7 @@ class GRGNModel(BaseModel):
                 out = self.forward(x=nextval, u=None, edge_index=edge_index, edge_weight=edge_weight)
                 
                 # Get generated output
-                gen = self.get_output(out)
+                gen = self.get_output(out, enc_dec_mean)
                 
                 output.append(gen)
                 t.update(1)
@@ -169,11 +169,12 @@ class GRGNModel(BaseModel):
         return output
     
     
-    def get_output(self, out):
+    def get_output(self, out, enc_dec_mean):
         pred_index = (self.input_size + 2) * self.M 
         
         # Extract encoder and decoder components
-        dec_fwd, dec_bwd = out[..., :pred_index], out[..., pred_index:]
+        dec_fwd, dec_bwd = out[..., :pred_index], out[..., pred_index:pred_index*2]
+        enc_fwd, enc_bwd = out[..., pred_index*2:pred_index*3], out[..., pred_index*3:]
         
         # Helper function to compute and combine forward and backward components
         def compute_mean(fwd, bwd):
@@ -182,6 +183,10 @@ class GRGNModel(BaseModel):
             return torch.mean(torch.cat([out_fwd, out_bwd], axis=-1), axis=-1, keepdim=True)
 
         output = compute_mean(dec_fwd, dec_bwd)
+        if enc_dec_mean:
+            output2 = compute_mean(enc_fwd, enc_bwd)
+            output = torch.cat([output2, output], axis=-1)
+            output = torch.mean(output, axis=-1, keepdim=True)
         
         return output
     

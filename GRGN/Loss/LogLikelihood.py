@@ -6,9 +6,16 @@ from torchmetrics import Metric
 from GRGN.Utils.reshapes import reshape_to_original
 
 class LogLikelihood(Metric):
-    def __init__(self, **kwargs: Any):
+    def __init__(self, enc=False, dec=False, **kwargs: Any):
         super(LogLikelihood, self).__init__(**kwargs)  # Initialize Metric before add_state
         
+        self.enc = enc
+        self.dec = dec
+        
+        if self.dec == self.enc:
+            # Error can't have both
+            self.dec = True
+            self.enc  = False
         self.sqrt = torch.sqrt(2. * torch.tensor(torch.pi))
 
         # Add states after the Metric is initialized
@@ -21,9 +28,13 @@ class LogLikelihood(Metric):
         Assumes that y_pred has (D+2)*M dimensions and y_true has D dimensions.
         """
         self.sqrt = self.sqrt.to(y_pred.device)
-        firts_pred = y_pred.shape[-1] // 2
-        y_pred_fwd = y_pred[..., :firts_pred]
-        y_pred_bwd = y_pred[..., firts_pred:]
+        firts_pred = y_pred.shape[-1] // 4
+        if self.enc:
+            y_pred_fwd = y_pred[..., firts_pred*2:firts_pred*3]
+            y_pred_bwd = y_pred[..., firts_pred*3:]
+        if self.dec:
+            y_pred_fwd  = y_pred[..., :firts_pred]
+            y_pred_bwd   = y_pred[..., firts_pred:firts_pred*2]
         
         def loss_inner(m, M, D, y_true, y_pred, node):
             y_true_local = y_true[..., node, :]
@@ -67,8 +78,17 @@ class LogLikelihood(Metric):
         return result
 
     def update(self, y_pred, y_true, **kwargs):
-        # Accumulate the loss and track the number of samples processed
-        loss = self.loss_function(y_pred, y_true, **kwargs)
+        if not self.enc and not self.dec:
+            self.enc = True
+            loss_enc = self.loss_function(y_pred, y_true, **kwargs)
+            self.enc = False
+            self.dec = True
+            loss_dec = self.loss_function(y_pred, y_true, **kwargs)
+            self.dec = False
+            loss = (loss_enc + loss_dec)/2
+        else:
+            # Accumulate the loss and track the number of samples processed
+            loss = self.loss_function(y_pred, y_true, **kwargs)
         
         if loss.dim() == 0:  # If loss is a scalar (shape [])
             loss = loss.unsqueeze(0)

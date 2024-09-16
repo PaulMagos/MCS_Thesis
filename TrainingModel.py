@@ -53,9 +53,11 @@ def run_imputation(model_params, optim, optim_params, epochs, patience, dataset_
     })
 
     # instantiate dataset
-    target = pd.concat([dataset.dataframe()[-(dataset_size-1):-1], dataset.dataframe()[-dataset_size:]], axis=0)
-    target = target.reset_index(drop=True)
+    # target = pd.concat([dataset.dataframe()[-(dataset_size-1):-1], dataset.dataframe()[-dataset_size:]], axis=0)
+    # target = target.reset_index(drop=True)
     
+    
+    target = dataset.dataframe()[-dataset_size:]
     torch_dataset = SpatioTemporalDataset(target=target,
                                       covariates=covariates,
                                       connectivity=adj,
