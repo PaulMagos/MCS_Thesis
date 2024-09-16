@@ -13,7 +13,7 @@ class GMMCell(Module):
     def __init__(self, input_size: int, n_nodes: int, hidden_size: int, M: int):
         super().__init__()
         self.input_activation = Tanh() 
-        self.first_stage = Linear(hidden_size * n_nodes, (n_nodes * input_size * M) + M * 2)
+        self.first_stage = Linear(hidden_size, (input_size * 2 * M) + M)
         self.input_size = input_size
         self.hidden_size = hidden_size
         self.n_nodes = n_nodes
@@ -23,14 +23,12 @@ class GMMCell(Module):
         self.weights = None
         
     def forward(self, x):
-        model_input = self.input_activation(x.view(-1, self.hidden_size * self.n_nodes))
+        model_input = self.input_activation(x)#.view(-1, self.hidden_size * self.n_nodes))
         out = self.first_stage(model_input)
-        D = self.n_nodes
-        stds_index = D*self.M
-        weghts_index = (D + 1)*self.M
+        # out = reshape_to_nodes(out, self.n_nodes, self.input_size, self.M)
+        stds_index = self.input_size*self.M
+        weghts_index = (self.input_size * 2)*self.M
         out[..., stds_index:weghts_index] = torch.exp(out[..., stds_index:weghts_index])
-        out = reshape_to_nodes(out, self.n_nodes, self.input_size, self.M)
-        weghts_index = (self.input_size + 1)*self.M
         out[..., weghts_index:] = F.softmax(out[..., weghts_index:], dim=-1)
         return out
     

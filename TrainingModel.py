@@ -242,6 +242,7 @@ if __name__ == '__main__':
         'hidden_size': args.hidden_size,
         'mixture_size': args.mixture_size,
         'exclude_bwd': args.nobwd,
+        'dropout': 0.1,
     }
     optim_params = {'lr': args.learning_rate, 'weight_decay': 0.01}
     

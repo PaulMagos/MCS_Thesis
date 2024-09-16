@@ -61,6 +61,7 @@ class Generator(pl.LightningModule):
                  loss_fn: Optional[Callable] = None,
                  scale_target: bool = False,
                  teacher_forcing_prob: float = 1.0,
+                 use_teacher_forcing: bool = False,
                  metrics: Optional[Mapping[str, Metric]] = None,
                  *,
                  model_class: Optional[Type] = None,
@@ -74,16 +75,16 @@ class Generator(pl.LightningModule):
         self.model_cls = model_class
         self.model_kwargs = model_kwargs or dict()
         self._model_fwd_signature = None  # automatic set on model assignment
-
+        self.last_input = None
         self.optim_class = optim_class
         self.optim_kwargs = optim_kwargs or dict()
         self.scheduler_class = scheduler_class
         self.scheduler_kwargs = scheduler_kwargs or dict()
         
+        self.use_teacher_forcing = use_teacher_forcing
         self.teacher_forcing_prob = teacher_forcing_prob
 
         self.loss_fn = loss_fn
-
         self.scale_target = scale_target
 
         if metrics is None:
@@ -335,7 +336,7 @@ class Generator(pl.LightningModule):
         #                                 preprocess=False,
         #                                 postprocess=not self.scale_target)
 
-        y_hat_loss = self._autoregressive_predict(batch, True)
+        y_hat_loss = self._autoregressive_predict(batch, self.use_teacher_forcing)
 
         # Scale target and output, eventually
         if self.scale_target:
@@ -394,21 +395,16 @@ class Generator(pl.LightningModule):
         inputs, targets, mask, transform = self._unpack_batch(batch)
 
         inputs, edge_index, edge_weight = inputs
-        input_t = inputs[0:1, :, :, :] # First input
-        outputs = []
 
-        for t in range(0, inputs.shape[0]):
-            output_t = self.forward(input_t, edge_index, edge_weight)
-            outputs.append(output_t)
+        if (use_teacher_forcing and random.random() < self.teacher_forcing_prob) or self.last_input==None:
+            output_t = self.forward(inputs, edge_index, edge_weight)
+        else:
+            output_t = self.generate(self.last_input if use_teacher_forcing else inputs, edge_index, edge_weight, None, 1, disable_bar=True)
+            output_t = self.forward(output_t, edge_index, edge_weight)
+        
+        self.last_input = inputs
 
-            if use_teacher_forcing and random.random() < self.teacher_forcing_prob:
-                input_t = inputs[t:t+1, :, :, :]  # Use ground truth
-            else:
-                output_t = self.generate(input_t, edge_index, edge_weight, None, 1, disable_bar=True)
-                input_t = output_t  # Use model's prediction
-
-        outputs = torch.cat(outputs, dim=0)
-        return outputs
+        return output_t
     
     def compute_metrics(self, batch, preprocess=False, postprocess=True):
         """"""

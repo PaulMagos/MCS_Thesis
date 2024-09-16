@@ -40,8 +40,8 @@ class LogLikelihood(Metric):
             y_true_local = y_true[..., node, :]
             
             mu = y_pred[..., node, D * m:D * (m + 1)]
-            sigma = y_pred[..., node, D * M + m]
-            alpha = y_pred[..., node, (D + 1) * M + m]
+            sigma = y_pred[..., node, D * M + D * m: D * M + D * (m + 1)]
+            alpha = y_pred[..., node, (D * 2) * M + m]
             
             # Calculate exponent term
             exponent = -torch.sum((mu - y_true_local)**2, -1) / (2 * sigma**2)
@@ -55,7 +55,7 @@ class LogLikelihood(Metric):
             return loss.mean(dim=(0, 1))
 
         D = y_true.shape[-1]
-        M = y_pred_fwd.shape[-1] // (D + 2)
+        M = y_pred_fwd.shape[-1] // ((D * 2) + 1)
         
         new_shape = (y_true.shape[-2], M, 1)
         result_fwd = torch.zeros(new_shape).to(y_pred.device)

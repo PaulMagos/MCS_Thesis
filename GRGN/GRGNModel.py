@@ -5,6 +5,7 @@ from tsl.nn.models import BaseModel
 from tsl.nn.layers import NodeEmbedding
 from torch_geometric.typing import Adj, OptTensor
 from .Cells import GRGNCell
+import random
 from tqdm import tqdm
 from GRGN.Utils import reshape_to_original
 
@@ -35,7 +36,7 @@ class GRGNModel(BaseModel):
         self.exclude_bwd = exclude_bwd
         self.D = input_size
         self.stds_index = self.M*self.D
-        self.weights_index = self.M*(self.D+1)
+        self.weights_index = self.M*(self.D*2)
         
         # Forward Step
         self.fwd_grgl = GRGNCell(input_size = input_size, 
@@ -118,7 +119,10 @@ class GRGNModel(BaseModel):
                 out = self.forward(x=nextval, u=u, edge_index=edge_index, edge_weight=edge_weight)
                 
                 # Get generated output
-                gen = self.get_output(out, enc_dec_mean)
+                if random.random() < 0.6:
+                    gen = self.get_output(out, enc_dec_mean)
+                else:
+                    gen = self.get_output(out, False)
                 
                 # Prepare for the next step
                 nextval = gen
@@ -170,7 +174,7 @@ class GRGNModel(BaseModel):
     
     
     def get_output(self, out, enc_dec_mean):
-        pred_index = (self.input_size + 2) * self.M 
+        pred_index = (self.input_size * 2 + 1) * self.M 
         
         # Extract encoder and decoder components
         dec_fwd, dec_bwd = out[..., :pred_index], out[..., pred_index:pred_index*2]
