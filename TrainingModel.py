@@ -149,29 +149,6 @@ def run_imputation(model_params, optim, optim_params, epochs, patience, dataset_
 
     trainer.fit(generator, datamodule=dm)
     
-    output = trainer.predict(generator, dataloaders=dm.train_dataloader(False))
-    output = generator.collate_prediction_outputs(output)
-    output = torch_to_numpy(output)
-    _, y_true = (output['y_hat'], output['y'])
-    
-    y_true = torch.Tensor(y_true)
-    kwargs = {'scaler': scalers['target']}
-    input = y_true[-500:-499]
-    generation = generator.generate(input, torch.tensor(adj[0]), torch.Tensor(adj[1]), None, 1000, both_mean=True, **kwargs)
-    generation = generation.reshape(generation.shape[0], generation.shape[-2])
-    
-    df = pd.DataFrame(generation.detach())
-    df.columns = dataset.dataframe().columns.droplevel('channels')
-    df.to_csv(f'./Datasets/GeneratedDatasets/{dataset_name}/syntetic{dataset_name}_{dataset_size}_{model_name}_GRGN.csv', index=False)
-    
-    input = y_true[-500:]
-    prediction = generator.predict(input, torch.tensor(adj[0]), torch.Tensor(adj[1]), both_mean=True, **kwargs)
-    prediction = prediction.reshape(prediction.shape[0], prediction.shape[-2])
-    
-    df = pd.DataFrame(prediction.detach())
-    df.columns = dataset.dataframe().columns.droplevel('channels')
-    df.to_csv(f'./Datasets/TeachForcingDatasets/{dataset_name}/TeachForcing{dataset_name}_{dataset_size}_{model_name}_GRGN.csv', index=False)
-
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Run generation model')
     parser.add_argument('--wandb', action='store_true', 
