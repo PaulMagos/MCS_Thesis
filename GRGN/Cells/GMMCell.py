@@ -12,9 +12,8 @@ __all__ = ['GMMCell']
 class GMMCell(Module):
     def __init__(self, input_size: int, n_nodes: int, hidden_size: int, M: int):
         super().__init__()
-        self.input_layer = LSTMCell(hidden_size * n_nodes, hidden_size)
         self.input_activation = Tanh() 
-        self.first_stage = Linear(hidden_size, (n_nodes * input_size * M) + M * 2)
+        self.first_stage = Linear(hidden_size * n_nodes, (n_nodes * input_size * M) + M * 2)
         self.input_size = input_size
         self.hidden_size = hidden_size
         self.n_nodes = n_nodes
@@ -24,9 +23,7 @@ class GMMCell(Module):
         self.weights = None
         
     def forward(self, x):
-        model_input, _ = self.input_layer(x.view(-1, self.hidden_size * self.n_nodes))
-        # model_input = self.input_activation(model_input)
-        # out = self.first_stage(model_input.view(-1, self.hidden_size * self.n_nodes))
+        model_input = self.input_activation(x.view(-1, self.hidden_size * self.n_nodes))
         out = self.first_stage(model_input)
         D = self.n_nodes
         stds_index = D*self.M

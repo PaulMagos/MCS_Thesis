@@ -33,9 +33,9 @@ class CustomSpatioTemporalDataModule(SpatioTemporalDataModule):
                          batch_size: Optional[int] = None) \
             -> Optional[DataLoader]:
         """"""
-        return self.get_dataloader('train', shuffle, batch_size)
+        return self.get_dataloader('train', False, batch_size)
 
-def run_imputation(model_params, optim, optim_params, epochs, patience, dataset_name, dataset_size, model_name, weights_mode, wandb):
+def run_imputation(model_params, optim, optim_params, epochs, patience, dataset_name, dataset_size, batch_size, model_name, wandb):
     ########################################
     # data module                          #
     ########################################
@@ -53,7 +53,7 @@ def run_imputation(model_params, optim, optim_params, epochs, patience, dataset_
     })
 
     # instantiate dataset
-    target = pd.concat([dataset.dataframe()[-(dataset_size+1):-1], dataset.dataframe()[-dataset_size:]], axis=0, ignore_index=True)
+    target = pd.concat([dataset.dataframe()[-(dataset_size-1):-1], dataset.dataframe()[-dataset_size:]], axis=0)
     target = target.reset_index(drop=True)
     
     torch_dataset = SpatioTemporalDataset(target=target,
@@ -70,7 +70,7 @@ def run_imputation(model_params, optim, optim_params, epochs, patience, dataset_
         dataset=torch_dataset,
         splitter=splitter,
         scalers=scalers,
-        batch_size=1,
+        batch_size=batch_size,
         workers=8)
     dm.setup(stage='fit')
 
@@ -90,11 +90,10 @@ def run_imputation(model_params, optim, optim_params, epochs, patience, dataset_
     model_cls.filter_model_args_(model_kwargs)
     model_kwargs.update(model_params)
 
-    loss_fn = LogLikelihood(both=True, weights_mode=weights_mode)
+    loss_fn = LogLikelihood()
 
     log_metrics = {
-        'Encoder_Loss': LogLikelihood(True, weights_mode=weights_mode),
-        'Decoder_Loss': LogLikelihood(False, weights_mode=weights_mode),
+        'Loss': LogLikelihood(),
     }
 
     scheduler_class = getattr(torch.optim.lr_scheduler, 'CosineAnnealingLR')
@@ -177,12 +176,12 @@ if __name__ == '__main__':
                             help='Flag to disable Wandb')
     parser.add_argument('--nobwd', action='store_true', 
                             help='Flag to disable backward_model')
-    parser.add_argument('--weights_mode', '-w', type=str, choices=['weighted', 'uniform', 'equal_probability'], default='weighted',
-                            help='Flag  weights')
     parser.add_argument('--dataset', '-d', type=str, choices=['AirQuality', 'PemsBay', 'MetrLA'], default='AirQuality',
                         help='Name of the Dataset')
-    parser.add_argument('--mixture_size', '-m', type=int, default=4,
+    parser.add_argument('--mixture_size', '-m', type=int, default=1,
                         help='Size of the mixtures')
+    parser.add_argument('--batch_size', type=int, default=32,
+                        help='Size of the batch')
     parser.add_argument('--epochs', type=int, default=50,
                         help='Number of epochs')
     parser.add_argument('--patience', type=int, default=10,
@@ -206,9 +205,9 @@ if __name__ == '__main__':
     longest_line = max([
         len(f"  Wandb:             {args.wandb} {check_default(args.wandb, False)}"),
         len(f"  Backward:          {not args.nobwd} {check_default(not args.nobwd, True)}"),
-        len(f"  Weights Mode:      {args.weights_mode} {check_default(args.weights_mode, 'weighted')}"),
         len(f"  Dataset:           {args.dataset} {check_default(args.dataset, 'AirQuality')}"),
-        len(f"  Mixture Size:      {args.mixture_size} {check_default(args.mixture_size, 4)}"),
+        len(f"  Mixture Size:      {args.mixture_size} {check_default(args.mixture_size, 1)}"),
+        len(f"  Batch Size:        {args.batch_size} {check_default(args.batch_size, 32)}"),
         len(f"  Hidden Size:       {args.hidden_size} {check_default(args.hidden_size, 16)}"),
         len(f"  Dataset Size:      {args.size} {check_default(args.size, 1000)}"),
         len(f"  Learning Rate:     {args.learning_rate} {check_default(args.learning_rate, 1e-4)}"),
@@ -228,8 +227,8 @@ if __name__ == '__main__':
     print(f"  Dataset:           {args.dataset} {check_default(args.dataset, 'AirQuality')}")
     print(f"  Dataset Size:      {args.size} {check_default(args.size, 1000)}")
     print(f"  Hidden Size:       {args.hidden_size} {check_default(args.hidden_size, 16)}")
-    print(f"  Mixture Size:      {args.mixture_size} {check_default(args.mixture_size, 4)}")
-    print(f"  Weights Mode:      {args.weights_mode} {check_default(args.weights_mode, 'weighted')}")
+    print(f"  Mixture Size:      {args.mixture_size} {check_default(args.mixture_size, 1)}")
+    print(f"  Batch Size:        {args.batch_size} {check_default(args.batch_size, 32)}")
     print(f"  Learning Rate:     {args.learning_rate} {check_default(args.learning_rate, 1e-4)}")
     print(f"  Epochs:            {args.epochs} {check_default(args.epochs, 50)}")
     print(f"  Patience:          {args.patience} {check_default(args.patience, 10)}")
@@ -240,11 +239,10 @@ if __name__ == '__main__':
     model_params = {
         'hidden_size': args.hidden_size,
         'mixture_size': args.mixture_size,
-        'mixture_weights_mode': args.weights_mode,
         'exclude_bwd': args.nobwd,
     }
     optim_params = {'lr': args.learning_rate, 'weight_decay': 0.01}
     
     optim = 'RMSprop' # SGD or Adam
     
-    res = run_imputation(model_params, optim, optim_params, args.epochs, args.patience, args.dataset, args.size, args.model_name, args.weights_mode, args.wandb)
+    res = run_imputation(model_params, optim, optim_params, args.epochs, args.patience, args.dataset, args.size, args.batch_size, args.model_name, args.wandb)

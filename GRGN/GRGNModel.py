@@ -13,7 +13,6 @@ class GRGNModel(BaseModel):
                 input_size: int,
                 hidden_size: int = 64,
                 mixture_size: int = 32,
-                mixture_weights_mode: str = 'weighted',
                 exclude_bwd: bool = False,
                 embedding_size: Optional[int] = 2,
                 n_layers: int = 1,
@@ -34,11 +33,9 @@ class GRGNModel(BaseModel):
         # Nodes of the graph
         self.n_nodes = n_nodes
         self.exclude_bwd = exclude_bwd
-        self.D = n_nodes
+        self.D = input_size
         self.stds_index = self.M*self.D
         self.weights_index = self.M*(self.D+1)
-        
-        self.mixture_weights_mode = mixture_weights_mode
         
         # Forward Step
         self.fwd_grgl = GRGNCell(input_size = input_size, 
@@ -68,7 +65,7 @@ class GRGNModel(BaseModel):
             self._embedding = NodeEmbedding(n_nodes, embedding_size)
         else:
             self.register_parameter('embedding', None)
-            
+                
     def forward(self,
             x: Tensor,
             edge_index: Adj,
@@ -77,6 +74,8 @@ class GRGNModel(BaseModel):
         """
         Forward and backward pass combining predictions and outputs.
         """
+        
+        # with probability 1/
         # Forward pass
         fwd_out, fwd_pred, fwd_repr, _ = self.fwd_grgl(x, edge_index, edge_weight, u=None)
         
@@ -91,7 +90,7 @@ class GRGNModel(BaseModel):
             bwd_out, bwd_pred, bwd_repr = fwd_out, fwd_pred, fwd_repr
 
         # Concatenate forward and backward results
-        out = torch.cat([fwd_pred, fwd_out, bwd_pred, bwd_out], dim=-1)
+        out = torch.cat([fwd_out, bwd_out], dim=-1)
         
         return out
             
@@ -101,8 +100,7 @@ class GRGNModel(BaseModel):
              edge_weight: OptTensor = None,
              u: OptTensor = None,
              steps: int = 32,
-             encoder_only: bool = False,
-             both_mean: bool = False,
+             disable_bar = False,
              **kwargs) -> Tensor:
     
         # Check for the presence of a scaler in kwargs
@@ -113,13 +111,13 @@ class GRGNModel(BaseModel):
         nextval = X
         output = []
         
-        with tqdm(total=steps, desc='Generating', unit='step') as t:
+        with tqdm(total=steps, disable=disable_bar, desc='Generating', unit='step') as t:
             for _ in range(steps):
                 # Forward pass
                 out = self.forward(x=nextval, u=u, edge_index=edge_index, edge_weight=edge_weight)
                 
                 # Get generated output
-                gen = self.get_output(out, both_mean, encoder_only)
+                gen = self.get_output(out)
                 
                 # Prepare for the next step
                 nextval = gen
@@ -158,7 +156,7 @@ class GRGNModel(BaseModel):
                 out = self.forward(x=nextval, u=None, edge_index=edge_index, edge_weight=edge_weight)
                 
                 # Get generated output
-                gen = self.get_output(out, both_mean, encoder_only)
+                gen = self.get_output(out)
                 
                 output.append(gen)
                 t.update(1)
@@ -171,61 +169,38 @@ class GRGNModel(BaseModel):
         return output
     
     
-    def get_output(self, out, both_mean, encoder_only):
+    def get_output(self, out):
         pred_index = (self.input_size + 2) * self.M 
         
         # Extract encoder and decoder components
-        enc_fwd, dec_fwd = out[..., :pred_index], out[..., pred_index:2*pred_index]
-        enc_bwd, dec_bwd = out[..., 2*pred_index:3*pred_index], out[..., 3*pred_index:]
+        dec_fwd, dec_bwd = out[..., :pred_index], out[..., pred_index:]
         
         # Helper function to compute and combine forward and backward components
         def compute_mean(fwd, bwd):
             out_fwd, out_bwd = self.compute_for(fwd), self.compute_for(bwd)
             return torch.mean(torch.cat([out_fwd, out_bwd], axis=-1), axis=-1, keepdim=True)
 
-        # Case where both encoder and decoder mean are needed
-        if both_mean and not encoder_only:
-            output_encoder = compute_mean(enc_fwd, enc_bwd)
-            output_decoder = compute_mean(dec_fwd, dec_bwd)
-            output = torch.mean(torch.cat([output_encoder, output_decoder], axis=-1), axis=-1, keepdim=True)
-        
-        # Case where only encoder is needed
-        elif encoder_only:
-            output = compute_mean(enc_fwd, enc_bwd)
-        # Case where only decoder is needed
-        else:
-            output = compute_mean(dec_fwd, dec_bwd)
+        output = compute_mean(dec_fwd, dec_bwd)
         
         return output
     
     def compute_for(self, out):
-        out = reshape_to_original(out, self.n_nodes, self.input_size, self.M)
         # Extract means, stds, and weights
         means, stds, weights = out[..., :self.stds_index], out[..., self.stds_index:self.weights_index], out[..., self.weights_index:]
         
-        def reshape(tensor):
-            return tensor.reshape(-1, self.M, self.D)
         
         # Clean up invalid values (NaN or Inf) in means, stds, and weights
         def clean_tensor(tensor):
             return torch.where(torch.isnan(tensor) | torch.isinf(tensor), torch.zeros_like(tensor), tensor).to(tensor.device)
 
-        means, stds, weights = reshape(means), stds.unsqueeze(-1), weights.unsqueeze(-1)
         means, stds, weights = clean_tensor(means), clean_tensor(stds), clean_tensor(weights)
 
         normal = torch.normal(means, stds)
         # Generate output based on mixture weights mode
-        match self.mixture_weights_mode:
-            case 'weighted':
-                gen = weights * normal
-            case 'uniform':
-                gen = normal
-            case 'equal_probability':
-                weights = torch.ones_like(weights) / self.M
-                gen = weights * normal
+        gen = weights * normal
         
         # Compute mean over the last axis and reshape the result
-        gen = torch.mean(gen, axis=1)
+        gen = torch.mean(gen, axis=-1)
         gen = gen.reshape(1, 1, gen.shape[-1], 1)
         
         return gen
