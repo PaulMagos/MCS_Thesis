@@ -177,18 +177,15 @@ class GRGNModel(BaseModel):
         
         # Helper function to compute and combine forward and backward components
         def compute_mean(fwd, bwd):
-            out_fwd, out_bwd = self.compute_for(fwd), self.compute_for(bwd)
+            out_fwd = self.compute_for(fwd[..., :self.stds_index], fwd[..., self.stds_index:self.weights_index], fwd[..., self.weights_index:])
+            out_bwd = self.compute_for(bwd[..., :self.stds_index], bwd[..., self.stds_index:self.weights_index], bwd[..., self.weights_index:])
             return torch.mean(torch.cat([out_fwd, out_bwd], axis=-1), axis=-1, keepdim=True)
 
         output = compute_mean(dec_fwd, dec_bwd)
         
         return output
     
-    def compute_for(self, out):
-        # Extract means, stds, and weights
-        means, stds, weights = out[..., :self.stds_index], out[..., self.stds_index:self.weights_index], out[..., self.weights_index:]
-        
-        
+    def compute_for(self, means, stds, weights):
         # Clean up invalid values (NaN or Inf) in means, stds, and weights
         def clean_tensor(tensor):
             return torch.where(torch.isnan(tensor) | torch.isinf(tensor), torch.zeros_like(tensor), tensor).to(tensor.device)
@@ -201,6 +198,6 @@ class GRGNModel(BaseModel):
         
         # Compute mean over the last axis and reshape the result
         gen = torch.mean(gen, axis=-1)
-        gen = gen.reshape(1, 1, gen.shape[-1], 1)
+        gen = gen.unsqueeze(-1)
         
         return gen

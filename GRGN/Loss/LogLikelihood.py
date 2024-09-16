@@ -28,7 +28,6 @@ class LogLikelihood(Metric):
         def loss_inner(m, M, D, y_true, y_pred, node):
             y_true_local = y_true[..., node, :]
             
-            
             mu = y_pred[..., node, D * m:D * (m + 1)]
             sigma = y_pred[..., node, D * M + m]
             alpha = y_pred[..., node, (D + 1) * M + m]
@@ -42,7 +41,7 @@ class LogLikelihood(Metric):
             # Calculate loss
             loss = left * torch.exp(exponent)
             
-            return loss.mean(0)
+            return loss.mean(dim=(0, 1))
 
         D = y_true.shape[-1]
         M = y_pred_fwd.shape[-1] // (D + 2)
