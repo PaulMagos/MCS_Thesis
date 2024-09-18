@@ -123,7 +123,9 @@ class GRGNModel(BaseModel):
                 out = self.forward(x=nextval, u=u, edge_index=edge_index, edge_weight=edge_weight)
                 
                 gen = self.get_output(out, enc_dec_mean)
-                nextval = gen
+                noise = torch.normal(0, 1, size=gen.size()).to(gen.device)
+                
+                nextval = gen + noise
                 output = torch.cat([output, gen]) if output is not None else gen
                 t.update(1)
 
@@ -155,7 +157,7 @@ class GRGNModel(BaseModel):
         
         with tqdm(total=steps, disable=disable_bar, desc='Generating', unit='step') as t:
             for _ in range(steps):
-                nextval = torch.normal(0, 5, size=X.size()).to(X.device)
+                nextval = torch.normal(0, 1, size=X.size()).to(X.device)
                 # Forward pass
                 out = self.forward(x=nextval, u=u, edge_index=edge_index, edge_weight=edge_weight)
                 
@@ -232,22 +234,71 @@ class GRGNModel(BaseModel):
         return output
     
     def compute_for(self, means, stds, weights):
+        """
+        Args:
+            means: Tensor of shape (b, s, n, m), representing the means.
+            stds: Tensor of shape (b, s, n, m), representing the standard deviations.
+            weights: Tensor of shape (b, s, n, m), representing the mixture weights.
+        
+        Returns:
+            A tensor `gen` with sampled values from the distribution.
+        """
         # Clean up invalid values (NaN or Inf) in means, stds, and weights
         def clean_tensor(tensor):
             return torch.where(torch.isnan(tensor) | torch.isinf(tensor), torch.zeros_like(tensor), tensor).to(tensor.device)
 
         means, stds, weights = clean_tensor(means), clean_tensor(stds), clean_tensor(weights)
 
-        gen = torch.zeros(size=means.shape[:-1] + (1, ), device=means.device)
-        for node in range(self.n_nodes):
-            prob_sum = torch.zeros_like(weights[..., 0, 0])
-            u = np.random.uniform()
-            for m in range(self.M):
-                prob_sum += weights[..., node, m]
-                if u < prob_sum:
-                    gen[..., node, :] = torch.normal(means[..., node, m], torch.sqrt(stds[..., node, m]))
-                    break
+        # Initialize the generated tensor
+        gen = torch.zeros(size=means.shape[:-1] + (1,), device=means.device)
+        
+        # Sample uniform random values for each node and batch
+        u = torch.rand(size=weights.shape[:-1], device=weights.device)  # Shape: (b, s, n)
+        
+        # Get the minimum index based on cumulative weights (vectorized)
+        m = self.get_min_index(u, weights)
+        
+        # Gather the means and standard deviations for the chosen indices (m)
+        batch_indices = torch.arange(means.shape[0], device=means.device).view(-1, 1, 1)
+        seq_indices = torch.arange(means.shape[1], device=means.device).view(1, -1, 1)
+        node_indices = torch.arange(means.shape[2], device=means.device).view(1, 1, -1)
+        
+        selected_means = means[batch_indices, seq_indices, node_indices, m]
+        selected_stds = stds[batch_indices, seq_indices, node_indices, m]
 
-        # gen = torch.mean(gen, axis=-1)
+        # Generate normally distributed random values using the selected means and stds
+        gen = torch.normal(selected_means, torch.sqrt(selected_stds)).unsqueeze(-1)
         
         return gen
+    
+    def get_min_index(self, val, pis):
+        """
+        Get the smallest index in the m dimension for each (b, s) where
+        the cumulative sum of the pis along the m dimension is greater than or equal to val.
+        
+        Args:
+            val: A float tensor of shape (b, s, n) with random values between 0 and 1.
+            pis: Tensor of shape (b, s, n, m), representing the probabilities.
+            
+        Returns:
+            A tensor of shape (b, s, n) with the smallest index in the m dimension for each (b, s, n).
+        """
+        # Compute the cumulative sum along the m dimension
+        cumsum_pis = torch.cumsum(pis, dim=-1)
+        
+        # Expand val to have the same shape as cumsum_pis for broadcasting
+        val_expanded = val.unsqueeze(-1)  # Shape becomes (b, s, n, 1)
+        
+        # Create a mask where the cumulative sum is greater than or equal to val
+        mask = cumsum_pis >= val_expanded
+        
+        # Create an index tensor with values ranging from 0 to m-1
+        indices = torch.arange(pis.shape[-1], device=pis.device)
+        
+        # Use torch.where to replace False with a large value (mask.shape[-1] ensures it's beyond valid index range)
+        valid_indices = torch.where(mask, indices, pis.shape[-1])
+        
+        # Find the minimum valid index (first occurrence of mask >= val) along the m dimension
+        min_index, _ = torch.min(valid_indices, dim=-1)
+        
+        return min_index

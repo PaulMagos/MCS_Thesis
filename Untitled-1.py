@@ -4,8 +4,8 @@ import os
 os.environ["CUDA_VISIBLE_DEVICES"]='1'
 
 from tsl.data import SpatioTemporalDataset, SpatioTemporalDataModule
-from tsl.data.preprocessing import StandardScaler
-from tsl.datasets import AirQuality
+from tsl.data.preprocessing import StandardScaler, MinMaxScaler
+from tsl.datasets import AirQuality, MetrLA, PemsBay
 from GRGN.Engines.Generator import Generator
 from tsl.data import TemporalSplitter
 import pandas as pd
@@ -25,13 +25,15 @@ class CustomSpatioTemporalDataModule(SpatioTemporalDataModule):
 
 # %%
 # filename = '/data/p.magos/TSGen/logs/generation/AirQuality/Best.ckpt'
-filename = '/storagenfs/p.magos/TSGen/logs/generation/AirQuality/AirQuality_LargeHSmallM-model-epoch=57-val_loss=-0.8160.ckpt'
+filename = '/storagenfs/p.magos/TSGen/logs/generation/PemsBay/BestModelMinMaxScaler.ckpt'
 
 # %%
 filename
 
 # %%
-dataset = AirQuality(impute_nans=True, small=True)
+# dataset = AirQuality(impute_nans=True, small=True)
+# dataset = MetrLA()
+dataset = PemsBay()
 
 adj = dataset.get_connectivity(**{'method': 'distance',
 'threshold': 0.1,
@@ -59,9 +61,6 @@ dm.setup(stage='fit')
 dm.trainset = list(range(len(torch_dataset)))
 
 # %%
-scalers['target'].params
-
-# %%
 # setup generator
 generator = Generator.load_from_checkpoint(filename)
 
@@ -74,7 +73,6 @@ generator.freeze()
 # trainer.test(generator, datamodule=dm)
 
 # %%
-print(generator.hparams)
 loss_fn = LogLikelihood()
 
 # %%
@@ -88,12 +86,11 @@ res['test_mae']/2
 
 # %%
 y_true = torch.Tensor(y_true)
-y_true.shape
 
 # %%
 kwargs = {'scaler': scalers['target']}
 input = y_true[-1000:-999]
-generation = generator.generate(input, torch.tensor(adj[0]), torch.Tensor(adj[1]), None, 1000, enc_dec_mean=False, **kwargs)
+generation = generator.autoregression(input, torch.tensor(adj[0]), torch.Tensor(adj[1]), None, 2000, enc_dec_mean=False, **kwargs)
 
 # %%
 print(generation.shape)
@@ -120,7 +117,7 @@ y_true.shape
 input = y_true[-100:]
 # input = scalers['target'].transform(input)
 input.shape
-prediction = generator.predict(input, torch.tensor(adj[0]), torch.Tensor(adj[1]), enc_dec_mean=True, **kwargs)
+prediction = generator.predict(input, torch.tensor(adj[0]), torch.Tensor(adj[1]), enc_dec_mean=False, **kwargs)
 
 # %%
 prediction = prediction.reshape(prediction.shape[0], prediction.shape[-2])
@@ -147,11 +144,11 @@ err = torch.square(prediction[-99:] - true[-99:])
 err.mean()
 
 # %%
-cols = [1001,1002,1003,1004,1005,1006,1007,1008,1009,1010,1011,1012,1013,1014,1015,1016,1017,1018,1019,1020,1021,1022,1023,1024,1025,1026,1027,1028,1029,1030,1031,1032,1033,1034,1035,1036]
+cols = dataset.dataframe().columns.droplevel('channels')
 df = pd.DataFrame(generation, columns=cols)
 
 # %%
-df.to_csv('SynteticAirQualityGRGN.csv', index=False)
+df.to_csv('SynteticPemsBayGRGN.csv', index=False)
 
 # %%
 
