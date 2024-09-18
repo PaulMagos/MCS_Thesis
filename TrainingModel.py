@@ -6,7 +6,7 @@ from pytorch_lightning.loggers import WandbLogger
 from typing import Union
 from tsl import logger
 from tsl.data import SpatioTemporalDataset, SpatioTemporalDataModule
-from tsl.data.preprocessing import StandardScaler
+from tsl.data.preprocessing import StandardScaler, MinMaxScaler
 from tsl.datasets import AirQuality, MetrLA, PemsBay
 from GRGN.Engines.Generator import Generator
 from GRGN.GRGNModel import GRGNModel
@@ -35,7 +35,7 @@ class CustomSpatioTemporalDataModule(SpatioTemporalDataModule):
         """"""
         return self.get_dataloader('train', False, batch_size)
 
-def run_imputation(model_params, optim, optim_params, epochs, patience, dataset_name, dataset_size, batch_size, model_name, wandb):
+def run_imputation(model_params, optim, optim_params, epochs, patience, dataset_name, dataset_size, batch_size, seq_length, teacher_forcing, model_name, wandb):
     ########################################
     # data module                          #
     ########################################
@@ -61,7 +61,8 @@ def run_imputation(model_params, optim, optim_params, epochs, patience, dataset_
     torch_dataset = SpatioTemporalDataset(target=target,
                                       covariates=covariates,
                                       connectivity=adj,
-                                      window=1,
+                                      window=seq_length,
+                                      horizon=seq_length,
                                       stride=1)
     
     splitter = TemporalSplitter(0.5, 0)
@@ -107,6 +108,7 @@ def run_imputation(model_params, optim, optim_params, epochs, patience, dataset_
                       optim_class=getattr(torch.optim, optim),
                       optim_kwargs=optim_params,
                       loss_fn=loss_fn,
+                      use_teacher_forcing= teacher_forcing,
                       metrics=log_metrics,
                       scheduler_class=scheduler_class,
                       scheduler_kwargs=scheduler_kwargs,
@@ -153,21 +155,25 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Run generation model')
     parser.add_argument('--wandb', action='store_true', 
                             help='Flag to disable Wandb')
+    parser.add_argument('--teacher_forcing', action='store_true', 
+                            help='Flag to enable Teacher Forcing')
     parser.add_argument('--nobwd', action='store_true', 
                             help='Flag to disable backward_model')
     parser.add_argument('--dataset', '-d', type=str, choices=['AirQuality', 'PemsBay', 'MetrLA'], default='AirQuality',
                         help='Name of the Dataset')
-    parser.add_argument('--mixture_size', '-m', type=int, default=1,
+    parser.add_argument('--mixture_size', '-m', type=int, default=5,
                         help='Size of the mixtures')
     parser.add_argument('--batch_size', type=int, default=32,
-                        help='Size of the batch')
+                        help='Size of the batch')   
+    parser.add_argument('--seq_length', type=int, default=1,
+                        help='Size of the sequence')
     parser.add_argument('--epochs', type=int, default=50,
                         help='Number of epochs')
     parser.add_argument('--patience', type=int, default=10,
                         help='Early Stopping patience')
     parser.add_argument('--hidden_size', '-hs', type=int, choices=[4, 8, 16, 32, 64], default=16,
                         help='Size of the Hidden')
-    parser.add_argument('--size', '-s', type=int, choices=[600, 1000, 2000, 5000, 8000], default=1000,
+    parser.add_argument('--size', '-s', type=int, choices=[600, 1000, 2000, 5000, 8000, 10000], default=1000,
                         help='Size of the dataset to use (small or full)')
     parser.add_argument('--learning_rate', '-lr', type=float, choices=[1e-5, 1e-4, 1e-3], default=1e-4,
                         help='Learning rate')
@@ -183,10 +189,12 @@ if __name__ == '__main__':
     # Find the length of the longest line
     longest_line = max([
         len(f"  Wandb:             {args.wandb} {check_default(args.wandb, False)}"),
+        len(f"  Teach Forcing:     {args.teacher_forcing} {check_default(args.teacher_forcing, False)}"),
         len(f"  Backward:          {not args.nobwd} {check_default(not args.nobwd, True)}"),
         len(f"  Dataset:           {args.dataset} {check_default(args.dataset, 'AirQuality')}"),
         len(f"  Mixture Size:      {args.mixture_size} {check_default(args.mixture_size, 1)}"),
         len(f"  Batch Size:        {args.batch_size} {check_default(args.batch_size, 32)}"),
+        len(f"  Sequence Length:   {args.seq_length} {check_default(args.seq_length, 1)}"),
         len(f"  Hidden Size:       {args.hidden_size} {check_default(args.hidden_size, 16)}"),
         len(f"  Dataset Size:      {args.size} {check_default(args.size, 1000)}"),
         len(f"  Learning Rate:     {args.learning_rate} {check_default(args.learning_rate, 1e-4)}"),
@@ -208,10 +216,12 @@ if __name__ == '__main__':
     print(f"  Hidden Size:       {args.hidden_size} {check_default(args.hidden_size, 16)}")
     print(f"  Mixture Size:      {args.mixture_size} {check_default(args.mixture_size, 1)}")
     print(f"  Batch Size:        {args.batch_size} {check_default(args.batch_size, 32)}")
+    print(f"  Sequence Length:   {args.seq_length} {check_default(args.seq_length, 1)}")
     print(f"  Learning Rate:     {args.learning_rate} {check_default(args.learning_rate, 1e-4)}")
     print(f"  Epochs:            {args.epochs} {check_default(args.epochs, 50)}")
     print(f"  Patience:          {args.patience} {check_default(args.patience, 10)}")
     print(f"  Backward:          {not args.nobwd} {check_default(not args.nobwd, True)}")
+    print(f"  Teach Forcing:     {args.teacher_forcing} {check_default(args.teacher_forcing, False)}")
     print(f"  Wandb:             {args.wandb} {check_default(args.wandb, False)}")
     print(f"{separator}\n")
 
@@ -225,4 +235,4 @@ if __name__ == '__main__':
     
     optim = 'RMSprop' # SGD or Adam
     
-    res = run_imputation(model_params, optim, optim_params, args.epochs, args.patience, args.dataset, args.size, args.batch_size, args.model_name, args.wandb)
+    res = run_imputation(model_params, optim, optim_params, args.epochs, args.patience, args.dataset, args.size, args.batch_size, args.seq_length, args.teacher_forcing, args.model_name, args.wandb)

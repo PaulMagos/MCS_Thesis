@@ -7,6 +7,7 @@ from torch_geometric.typing import Adj, OptTensor
 from .Cells import GRGNCell
 import random
 from tqdm import tqdm
+import numpy as np
 from GRGN.Utils import reshape_to_original
 
 class GRGNModel(BaseModel):
@@ -36,7 +37,7 @@ class GRGNModel(BaseModel):
         self.exclude_bwd = exclude_bwd
         self.D = input_size
         self.stds_index = self.M*self.D
-        self.weights_index = self.M*(self.D*2)
+        self.weights_index = self.M*(self.D+1)
         
         # Forward Step
         self.fwd_grgl = GRGNCell(input_size = input_size, 
@@ -94,13 +95,15 @@ class GRGNModel(BaseModel):
         out = torch.cat([fwd_out, bwd_out, fwd_pred, bwd_pred], dim=-1)
         
         return out
-            
-    def generate(self,
+    
+    def autoregression(self,
              X: Tensor,
              edge_index: Adj,
              edge_weight: OptTensor = None,
              u: OptTensor = None,
              steps: int = 32,
+             noise_mean: float = None,
+             noise_stddev: float = None,
              disable_bar = False,
              enc_dec_mean = False,
              **kwargs) -> Tensor:
@@ -110,31 +113,65 @@ class GRGNModel(BaseModel):
         if scaler:
             X = scaler.transform(X)
         
+        # nextval = X
+        output = None
         nextval = X
-        output = []
         
         with tqdm(total=steps, disable=disable_bar, desc='Generating', unit='step') as t:
             for _ in range(steps):
                 # Forward pass
                 out = self.forward(x=nextval, u=u, edge_index=edge_index, edge_weight=edge_weight)
                 
-                # Get generated output
-                if random.random() < 0.6:
-                    gen = self.get_output(out, enc_dec_mean)
-                else:
-                    gen = self.get_output(out, False)
-                
-                # Prepare for the next step
+                gen = self.get_output(out, enc_dec_mean)
                 nextval = gen
-                output.append(gen)
+                output = torch.cat([output, gen]) if output is not None else gen
                 t.update(1)
-        
+
         # Concatenate and inverse transform if scaler exists
-        output = torch.cat(output)
         if scaler:
             output = scaler.inverse_transform(output)
         
         return output
+            
+    def generate(self,
+             X: Tensor,
+             edge_index: Adj,
+             edge_weight: OptTensor = None,
+             u: OptTensor = None,
+             steps: int = 32,
+             noise_mean: float = None,
+             noise_stddev: float = None,
+             disable_bar = False,
+             enc_dec_mean = False,
+             **kwargs) -> Tensor:
+    
+        # Check for the presence of a scaler in kwargs
+        scaler = kwargs.get('scaler')
+        if scaler:
+            X = scaler.transform(X)
+        
+        # nextval = X
+        output = None
+        
+        with tqdm(total=steps, disable=disable_bar, desc='Generating', unit='step') as t:
+            for _ in range(steps):
+                nextval = torch.normal(0, 5, size=X.size()).to(X.device)
+                # Forward pass
+                out = self.forward(x=nextval, u=u, edge_index=edge_index, edge_weight=edge_weight)
+                
+                gen = self.get_output(out, enc_dec_mean)
+
+                output = torch.cat([output, gen]) if output is not None else gen
+                t.update(1)
+
+        # Concatenate and inverse transform if scaler exists
+        if scaler:
+            output = scaler.inverse_transform(output)
+        
+        return output
+    
+    def apply_noise(self, gen, noise_mean, noise_stddev):
+        return gen + torch.normal(noise_mean, noise_stddev, size=gen.size())
 
     def predict(self,
             X: Tensor,
@@ -174,7 +211,7 @@ class GRGNModel(BaseModel):
     
     
     def get_output(self, out, enc_dec_mean):
-        pred_index = (self.input_size * 2 + 1) * self.M 
+        pred_index = (self.input_size + 2) * self.M 
         
         # Extract encoder and decoder components
         dec_fwd, dec_bwd = out[..., :pred_index], out[..., pred_index:pred_index*2]
@@ -201,12 +238,16 @@ class GRGNModel(BaseModel):
 
         means, stds, weights = clean_tensor(means), clean_tensor(stds), clean_tensor(weights)
 
-        normal = torch.normal(means, stds)
-        # Generate output based on mixture weights mode
-        gen = weights * normal
-        
-        # Compute mean over the last axis and reshape the result
-        gen = torch.mean(gen, axis=-1)
-        gen = gen.unsqueeze(-1)
+        gen = torch.zeros(size=means.shape[:-1] + (1, ), device=means.device)
+        for node in range(self.n_nodes):
+            prob_sum = torch.zeros_like(weights[..., 0, 0])
+            u = np.random.uniform()
+            for m in range(self.M):
+                prob_sum += weights[..., node, m]
+                if u < prob_sum:
+                    gen[..., node, :] = torch.normal(means[..., node, m], torch.sqrt(stds[..., node, m]))
+                    break
+
+        # gen = torch.mean(gen, axis=-1)
         
         return gen

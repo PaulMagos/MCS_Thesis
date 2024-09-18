@@ -181,6 +181,11 @@ class Generator(pl.LightningModule):
         generate_fn = self.model.generate
         return generate_fn(*args, **kwargs)
     
+    def autoregression(self, *args, **kwargs):
+        """"""
+        autoregression_fn = self.model.autoregression
+        return autoregression_fn(*args, **kwargs)
+    
     def predict(self, *args, **kwargs):
         """"""
         predict_fn = self.model.predict
@@ -332,11 +337,11 @@ class Generator(pl.LightningModule):
         y = y_loss = batch.y
 
         # # Compute predictions and compute loss
-        # y_hat_loss = self.predict_batch(batch,
-        #                                 preprocess=False,
-        #                                 postprocess=not self.scale_target)
+        y_hat_loss = self.predict_batch(batch,
+                                        preprocess=False,
+                                        postprocess=not self.scale_target)
 
-        y_hat_loss = self._autoregressive_predict(batch, self.use_teacher_forcing)
+        # y_hat_loss = self._autoregressive_predict(batch, self.use_teacher_forcing)
 
         # Scale target and output, eventually
         if self.scale_target:
@@ -355,8 +360,11 @@ class Generator(pl.LightningModule):
         """"""
         y = y_loss = batch.y
 
+        y_hat_loss = self.predict_batch(batch,
+                                        preprocess=False,
+                                        postprocess=not self.scale_target)
         # Compute predictions
-        y_hat_loss = self._autoregressive_predict(batch, False)
+        # y_hat_loss = self._autoregressive_predict(batch, False)
 
         # Scale target and output, eventually
         if self.scale_target:
@@ -391,20 +399,21 @@ class Generator(pl.LightningModule):
         self.log_loss('test', test_loss, batch_size=batch.batch_size)
         return test_loss
 
-    def _autoregressive_predict(self, batch, use_teacher_forcing):
-        inputs, targets, mask, transform = self._unpack_batch(batch)
+    # def _autoregressive_predict(self, batch, use_teacher_forcing):
+    #     inputs, targets, mask, transform = self._unpack_batch(batch)
 
-        inputs, edge_index, edge_weight = inputs
+    #     inputs, edge_index, edge_weight = inputs
 
-        if (use_teacher_forcing and random.random() < self.teacher_forcing_prob) or self.last_input==None:
-            output_t = self.forward(inputs, edge_index, edge_weight)
-        else:
-            output_t = self.generate(self.last_input if use_teacher_forcing else inputs, edge_index, edge_weight, None, 1, disable_bar=True)
-            output_t = self.forward(output_t, edge_index, edge_weight)
+    #     if (use_teacher_forcing and random.random() < self.teacher_forcing_prob) or self.last_input==None:
+    #         output_t = self.forward(inputs, edge_index, edge_weight)
+    #         self.last_input = inputs
+    #     else:
+    #         output_t = self.autoregression(self.last_input if use_teacher_forcing else inputs, edge_index, edge_weight, None, 1, disable_bar=True)
+    #         self.last_input = output_t.detach()
+    #         output_t = self.forward(output_t, edge_index, edge_weight)
         
-        self.last_input = inputs
 
-        return output_t
+    #     return output_t
     
     def compute_metrics(self, batch, preprocess=False, postprocess=True):
         """"""
@@ -430,8 +439,9 @@ class Generator(pl.LightningModule):
                 cfg['monitor'] = metric
         return cfg
     
-    def on_train_epoch_end(self):
-        """Decrease teacher forcing probability and log it on the progress bar."""
-        self.teacher_forcing_prob = max(0.1, self.teacher_forcing_prob * 0.99)
-        # Log the teacher forcing probability to the progress bar
-        self.log('teacher_forcing_prob', self.teacher_forcing_prob, prog_bar=True)
+    # def on_train_epoch_end(self):
+    #     if self.use_teacher_forcing:
+    #         """Decrease teacher forcing probability and log it on the progress bar."""
+    #         self.teacher_forcing_prob = max(0.1, self.teacher_forcing_prob * 0.99)
+    #         # Log the teacher forcing probability to the progress bar
+    #         self.log('teacher_forcing_prob', self.teacher_forcing_prob, prog_bar=True)

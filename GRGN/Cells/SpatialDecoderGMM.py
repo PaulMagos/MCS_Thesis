@@ -39,7 +39,7 @@ class SpatialDecoderGMM(Module):
                                    root_weight=False,
                                    k=1)
         
-        self.gmm = GMMCell(input_size, n_nodes, 2 * hidden_size + input_size, num_components)
+        self.gmm = GMMCell(input_size, n_nodes, 2 * hidden_size, num_components)
         
         self.activation = Tanh()
         
@@ -91,7 +91,7 @@ class SpatialDecoderGMM(Module):
                 edge_index = remove_diag(edge_index)
             out = self.graph_conv(x_in, edge_index, edge_weight)
         
-        out1 = torch.cat([x, out, h], dim=-1)
+        out1 = torch.cat([out, h], dim=-1)
         out = self.activation(out1)
         h = self.activation(h)
         out = self.gmm(out1)

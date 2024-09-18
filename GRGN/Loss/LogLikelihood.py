@@ -12,10 +12,10 @@ class LogLikelihood(Metric):
         self.enc = enc
         self.dec = dec
         
-        if self.dec == self.enc:
+        if self.dec == self.enc == False:
             # Error can't have both
             self.dec = True
-            self.enc  = False
+            self.enc  = True
         self.sqrt = torch.sqrt(2. * torch.tensor(torch.pi))
 
         # Add states after the Metric is initialized
@@ -36,43 +36,42 @@ class LogLikelihood(Metric):
             y_pred_fwd  = y_pred[..., :firts_pred]
             y_pred_bwd   = y_pred[..., firts_pred:firts_pred*2]
         
-        def loss_inner(m, M, D, y_true, y_pred, node):
-            y_true_local = y_true[..., node, :]
+        def loss_inner(m, M, D, y_true, y_pred):
+            y_true_local = y_true[..., :]
             
-            mu = y_pred[..., node, D * m:D * (m + 1)]
-            sigma = y_pred[..., node, D * M + D * m: D * M + D * (m + 1)]
-            alpha = y_pred[..., node, (D * 2) * M + m]
+            mu = y_pred[..., D * m:D * (m + 1)]
+            sigma = y_pred[..., D * M + m: D * M + (m + 1)]
+            alpha = y_pred[..., (D + 1) * M + m:(D + 1) * M + m + 1]
             
             # Calculate exponent term
-            exponent = -torch.sum((mu - y_true_local)**2, -1) / (2 * sigma**2)
+            sum = -torch.sum((mu - y_true_local)**2, -1, keepdim=True)
+            exponent = sum / (2 * sigma**2)
             
             # Calculate left term
             left = alpha / (sigma * self.sqrt)
             
             # Calculate loss
             loss = left * torch.exp(exponent)
-            
-            return loss.mean(dim=(0, 1))
+            # loss = loss.sum(2)
+            # loss = loss.sum(2)
+            loss = loss.mean(dim=(0, 1))
+            return loss
 
         D = y_true.shape[-1]
-        M = y_pred_fwd.shape[-1] // ((D * 2) + 1)
+        M = y_pred_fwd.shape[-1] // (D + 2)
         
-        new_shape = (y_true.shape[-2], M, 1)
+        new_shape = (M, y_true.shape[-2], 1)
         result_fwd = torch.zeros(new_shape).to(y_pred.device)
         result_bwd = torch.zeros(new_shape).to(y_pred.device)
-        result_nodes_fwd = torch.zeros((y_true.shape[-2], 1)).to(y_pred.device)
-        result_nodes_bwd = torch.zeros((y_true.shape[-2], 1)).to(y_pred.device)
         
-        for node in range(y_true.shape[-2]):
-            for m in range(M):
-                result_fwd[node, m] = loss_inner(m, M, D, y_true, y_pred_fwd, node)
-                result_bwd[node, m] = loss_inner(m, M, D, y_true, y_pred_bwd, node)
-            result_nodes_fwd[node] = -torch.log(result_fwd[node].sum(0, keepdim=True))
-            result_nodes_bwd[node] = -torch.log(result_bwd[node].sum(0, keepdim=True))
+        for m in range(M):
+            result_fwd[m] = loss_inner(m, M, D, y_true, y_pred_fwd)
+            result_bwd[m] = loss_inner(m, M, D, y_true, y_pred_bwd)
+        result_fwd = -torch.log(result_fwd.sum(0)).mean(0)
+        result_bwd = -torch.log(result_bwd.sum(0)).mean(0)
         
-
-        result1 = result_nodes_fwd.mean(0).to(y_pred.device)
-        result2 = result_nodes_bwd.mean(0).to(y_pred.device)
+        result1 = result_fwd.to(y_pred.device)
+        result2 = result_bwd.to(y_pred.device)
         result = (result1 + result2)/2
         
         return result

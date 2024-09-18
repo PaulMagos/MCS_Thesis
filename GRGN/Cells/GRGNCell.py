@@ -51,7 +51,6 @@ class GRGNCell(Module):
         self.dropout = Dropout(dropout) if dropout > 0 else None
         
         # First Stage - Mixture Density Model
-        # self.first_stage = Linear(hidden_size, (input_size + 2)*mixture_size)
         self.first_stage = GMMCell(input_size, n_nodes, hidden_size, mixture_size)
         
         # Second Stage - Spatial Decoder Mixture Density Model
