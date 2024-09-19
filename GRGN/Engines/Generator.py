@@ -7,6 +7,7 @@ from torchmetrics import Metric, MetricCollection
 
 from tsl import logger
 from tsl.data import Data
+import random
 from tsl.nn.models import BaseModel
 from tsl.utils import foo_signature
 
@@ -59,6 +60,8 @@ class Generator(pl.LightningModule):
                  model: Optional[torch.nn.Module] = None,
                  loss_fn: Optional[Callable] = None,
                  scale_target: bool = False,
+                 teacher_forcing_prob: float = 1.0,
+                 use_teacher_forcing: bool = False,
                  metrics: Optional[Mapping[str, Metric]] = None,
                  *,
                  model_class: Optional[Type] = None,
@@ -72,14 +75,16 @@ class Generator(pl.LightningModule):
         self.model_cls = model_class
         self.model_kwargs = model_kwargs or dict()
         self._model_fwd_signature = None  # automatic set on model assignment
-
+        self.last_input = None
         self.optim_class = optim_class
         self.optim_kwargs = optim_kwargs or dict()
         self.scheduler_class = scheduler_class
         self.scheduler_kwargs = scheduler_kwargs or dict()
+        
+        self.use_teacher_forcing = use_teacher_forcing
+        self.teacher_forcing_prob = teacher_forcing_prob
 
         self.loss_fn = loss_fn
-
         self.scale_target = scale_target
 
         if metrics is None:
@@ -175,6 +180,11 @@ class Generator(pl.LightningModule):
         """"""
         generate_fn = self.model.generate
         return generate_fn(*args, **kwargs)
+    
+    def autoregression(self, *args, **kwargs):
+        """"""
+        autoregression_fn = self.model.autoregression
+        return autoregression_fn(*args, **kwargs)
     
     def predict(self, *args, **kwargs):
         """"""
@@ -326,10 +336,12 @@ class Generator(pl.LightningModule):
         """"""
         y = y_loss = batch.y
 
-        # Compute predictions and compute loss
+        # # Compute predictions and compute loss
         y_hat_loss = self.predict_batch(batch,
                                         preprocess=False,
                                         postprocess=not self.scale_target)
+
+        # y_hat_loss = self._autoregressive_predict(batch, self.use_teacher_forcing)
 
         # Scale target and output, eventually
         if self.scale_target:
@@ -348,10 +360,11 @@ class Generator(pl.LightningModule):
         """"""
         y = y_loss = batch.y
 
-        # Compute predictions
         y_hat_loss = self.predict_batch(batch,
                                         preprocess=False,
                                         postprocess=not self.scale_target)
+        # Compute predictions
+        # y_hat_loss = self._autoregressive_predict(batch, False)
 
         # Scale target and output, eventually
         if self.scale_target:
@@ -386,6 +399,22 @@ class Generator(pl.LightningModule):
         self.log_loss('test', test_loss, batch_size=batch.batch_size)
         return test_loss
 
+    # def _autoregressive_predict(self, batch, use_teacher_forcing):
+    #     inputs, targets, mask, transform = self._unpack_batch(batch)
+
+    #     inputs, edge_index, edge_weight = inputs
+
+    #     if (use_teacher_forcing and random.random() < self.teacher_forcing_prob) or self.last_input==None:
+    #         output_t = self.forward(inputs, edge_index, edge_weight)
+    #         self.last_input = inputs
+    #     else:
+    #         output_t = self.autoregression(self.last_input if use_teacher_forcing else inputs, edge_index, edge_weight, None, 1, disable_bar=True)
+    #         self.last_input = output_t.detach()
+    #         output_t = self.forward(output_t, edge_index, edge_weight)
+        
+
+    #     return output_t
+    
     def compute_metrics(self, batch, preprocess=False, postprocess=True):
         """"""
         # Compute outputs and rescale
@@ -409,3 +438,10 @@ class Generator(pl.LightningModule):
             if metric is not None:
                 cfg['monitor'] = metric
         return cfg
+    
+    # def on_train_epoch_end(self):
+    #     if self.use_teacher_forcing:
+    #         """Decrease teacher forcing probability and log it on the progress bar."""
+    #         self.teacher_forcing_prob = max(0.1, self.teacher_forcing_prob * 0.99)
+    #         # Log the teacher forcing probability to the progress bar
+    #         self.log('teacher_forcing_prob', self.teacher_forcing_prob, prog_bar=True)

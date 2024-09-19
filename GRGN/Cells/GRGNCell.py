@@ -5,7 +5,7 @@ from .SpatialDecoderGMM import SpatialDecoderGMM
 from tsl.nn.layers import NodeEmbedding
 from .DCGRNNCell import DCGRNNNCell
 from tsl.nn.layers.norm import LayerNorm
-from torch.nn import Module, ModuleList, Identity, Dropout, Linear, Tanh
+from torch.nn import Module, ModuleList, Identity, Dropout, Linear
 from .GMMCell import GMMCell
 from torch_geometric.typing import Adj, OptTensor
 
