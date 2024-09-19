@@ -52,23 +52,21 @@ class LogLikelihood(Metric):
             
             # Calculate loss
             loss = left * torch.exp(exponent)
-            # loss = loss.sum(2)
-            # loss = loss.sum(2)
-            # loss = loss.mean(dim=(0, 1))
+            loss = loss.mean(dim=(0, 1))
             return loss
 
         D = y_true.shape[-1]
         M = y_pred_fwd.shape[-1] // (D + 2)
         
-        new_shape = (M,) + y_true.shape
+        new_shape = (M, y_true.shape[-2], D)
         result_fwd = torch.zeros(new_shape).to(y_pred.device)
         result_bwd = torch.zeros(new_shape).to(y_pred.device)
         
         for m in range(M):
             result_fwd[m] = loss_inner(m, M, D, y_true, y_pred_fwd)
             result_bwd[m] = loss_inner(m, M, D, y_true, y_pred_bwd)
-        result_fwd = -torch.log(result_fwd.mean(3).sum(0)).mean(dim=(0, 1))
-        result_bwd = -torch.log(result_bwd.mean(3).sum(0)).mean(dim=(0, 1))
+        result_fwd = -torch.log(result_fwd.sum(0)).mean(0)
+        result_bwd = -torch.log(result_bwd.sum(0)).mean(0)
         
         result1 = result_fwd.to(y_pred.device)
         result2 = result_bwd.to(y_pred.device)

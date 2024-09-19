@@ -171,7 +171,7 @@ if __name__ == '__main__':
                         help='Number of epochs')
     parser.add_argument('--patience', type=int, default=10,
                         help='Early Stopping patience')
-    parser.add_argument('--hidden_size', '-hs', type=int, choices=[4, 8, 16, 32, 64, 128, 256], default=16,
+    parser.add_argument('--hidden_size', '-hs', type=int, choices=[4, 8, 16, 32, 64, 128, 256, 512, 1024], default=16,
                         help='Size of the Hidden')
     parser.add_argument('--size', '-s', type=int, choices=[600, 1000, 2000, 5000, 8000, 10000], default=1000,
                         help='Size of the dataset to use (small or full)')

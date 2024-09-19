@@ -154,10 +154,13 @@ class GRGNModel(BaseModel):
         
         # nextval = X
         output = None
+        means = torch.zeros_like(X).to(X.device)
+        stds = torch.ones_like(X).to(X.device) * 5.
+        noiser = torch.distributions.Normal(means, stds)
         
         with tqdm(total=steps, disable=disable_bar, desc='Generating', unit='step') as t:
             for _ in range(steps):
-                nextval = torch.normal(0, 1, size=X.size()).to(X.device)
+                nextval = noiser.sample().to(X.device)
                 # Forward pass
                 out = self.forward(x=nextval, u=u, edge_index=edge_index, edge_weight=edge_weight)
                 
@@ -267,7 +270,7 @@ class GRGNModel(BaseModel):
         selected_stds = stds[batch_indices, seq_indices, node_indices, m]
 
         # Generate normally distributed random values using the selected means and stds
-        gen = torch.normal(selected_means, torch.sqrt(selected_stds)).unsqueeze(-1)
+        gen = torch.distributions.Normal(selected_means, torch.sqrt(selected_stds)).sample().unsqueeze(-1)
         
         return gen
     
