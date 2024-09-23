@@ -23,6 +23,7 @@ class GRGNModel(BaseModel):
                 decoder_order: int = 1,
                 layer_norm: bool = True,
                 dropout: float =.0,
+                steps_ahead: int = 1,
                 ):
         super(GRGNModel, self).__init__()
         
@@ -38,6 +39,7 @@ class GRGNModel(BaseModel):
         self.D = input_size
         self.stds_index = self.M*self.D
         self.weights_index = self.M*(self.D+1)
+        self.steps_ahead = steps_ahead
         
         # Forward Step
         self.fwd_grgl = GRGNCell(input_size = input_size, 
@@ -102,6 +104,7 @@ class GRGNModel(BaseModel):
              edge_weight: OptTensor = None,
              u: OptTensor = None,
              steps: int = 32,
+             add_noise = True,
              noise_mean: float = None,
              noise_stddev: float = None,
              disable_bar = False,
@@ -116,17 +119,21 @@ class GRGNModel(BaseModel):
         # nextval = X
         output = None
         nextval = X
+        noiser = torch.distributions.Normal(noise_mean, noise_stddev)
+        X_steps = X.shape[1]
+         
         
         with tqdm(total=steps, disable=disable_bar, desc='Generating', unit='step') as t:
             for _ in range(steps):
                 # Forward pass
-                out = self.forward(x=nextval, u=u, edge_index=edge_index, edge_weight=edge_weight)
+                steps_ahead = self.steps_ahead if nextval.shape[1] > self.steps_ahead else nextval.shape[1]
+                out = self.forward(x=nextval[:, -steps_ahead:, :, :], u=u, edge_index=edge_index, edge_weight=edge_weight)
                 
                 gen = self.get_output(out, enc_dec_mean)
-                noise = torch.normal(0, 1, size=gen.size()).to(gen.device)
+                noise = noiser.sample(gen.size()).to(X.device)
                 
-                nextval = gen + noise
-                output = torch.cat([output, gen]) if output is not None else gen
+                nextval = gen + noise if add_noise else gen
+                output = torch.cat([output, gen[:, -1:, :, :]], dim=1) if output is not None else gen
                 t.update(1)
 
         # Concatenate and inverse transform if scaler exists
@@ -141,8 +148,8 @@ class GRGNModel(BaseModel):
              edge_weight: OptTensor = None,
              u: OptTensor = None,
              steps: int = 32,
-             noise_mean: float = None,
-             noise_stddev: float = None,
+             noise_mean: float = 0.,
+             noise_stddev: float = 5.,
              disable_bar = False,
              enc_dec_mean = False,
              **kwargs) -> Tensor:
@@ -154,8 +161,8 @@ class GRGNModel(BaseModel):
         
         # nextval = X
         output = None
-        means = torch.zeros_like(X).to(X.device)
-        stds = torch.ones_like(X).to(X.device) * 5.
+        means = torch.ones(X).to(X.device) * noise_mean
+        stds = torch.ones_like(X).to(X.device) * noise_stddev
         noiser = torch.distributions.Normal(means, stds)
         
         with tqdm(total=steps, disable=disable_bar, desc='Generating', unit='step') as t:
@@ -215,6 +222,63 @@ class GRGNModel(BaseModel):
         return output
     
     
+    def imputation(self,
+                   X: Tensor,
+                   mask: Tensor,
+                   edge_index: Adj,
+                   edge_weight: OptTensor = None,
+                   u: OptTensor = None,
+                   enc_dec_mean: bool = False,
+                   **kwargs) -> Tensor:
+        """
+        Impute missing values in X based on the mask. Only the positions defined by the mask are replaced with model predictions.
+        
+        Args:
+            X: Input tensor (batch_size, time_steps, nodes, features).
+            mask: A binary tensor of the same shape as X. Positions with 1 (or True) are imputed.
+            edge_index: Edge index for the graph.
+            edge_weight: Optional edge weights for the graph.
+            u: Optional additional input features.
+            enc_dec_mean: Whether to use mean of the encoder and decoder outputs.
+            **kwargs: Optional keyword arguments like scaler.
+        
+        Returns:
+            A tensor with imputed values only in positions defined by the mask.
+        """
+        
+        scaler = kwargs.get('scaler')
+        if scaler:
+            X = scaler.transform(X)
+        
+        output = []
+        steps = X.shape[0]
+        gen = X[0].reshape(1, 1, X.shape[-2], X.shape[-1])
+        with tqdm(total=steps, desc='Imputing', unit='step') as t:
+            for i in range(steps):
+                # Select the step's input
+                nextval = X[i].reshape(1, 1, X.shape[-2], X.shape[-1])
+                # Apply mask: Replace only values where mask is True (1)
+                imputed_step = torch.where(mask[i].reshape(1, 1, X.shape[-2], X.shape[-1]), gen, nextval)
+                
+                output.append(imputed_step)
+                
+                # Forward pass to get predictions
+                out = self.forward(x=nextval, u=None, edge_index=edge_index, edge_weight=edge_weight)
+                
+                # Get generated output
+                gen = self.get_output(out, enc_dec_mean)
+
+                t.update(1)
+
+        # Concatenate the output along the time axis
+        output = torch.cat(output)
+        
+        # Inverse transform the output if a scaler is provided
+        if scaler:
+            output = scaler.inverse_transform(output)
+
+        return output
+    
     def get_output(self, out, enc_dec_mean):
         pred_index = (self.input_size + 2) * self.M 
         
@@ -235,6 +299,7 @@ class GRGNModel(BaseModel):
             output = torch.mean(output, axis=-1, keepdim=True)
         
         return output
+    
     
     def compute_for(self, means, stds, weights):
         """

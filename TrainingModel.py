@@ -62,10 +62,10 @@ def run_imputation(model_params, optim, optim_params, epochs, patience, dataset_
                                       covariates=covariates,
                                       connectivity=adj,
                                       window=seq_length,
-                                      horizon=seq_length,
+                                      horizon=1,
                                       stride=1)
     
-    splitter = TemporalSplitter(0.5, 0)
+    splitter = TemporalSplitter(0.2, 0.1)
 
     scalers = {'target': StandardScaler(axis=(0, 1))}
     

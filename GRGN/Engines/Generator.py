@@ -341,8 +341,6 @@ class Generator(pl.LightningModule):
                                         preprocess=False,
                                         postprocess=not self.scale_target)
 
-        # y_hat_loss = self._autoregressive_predict(batch, self.use_teacher_forcing)
-
         # Scale target and output, eventually
         if self.scale_target:
             y_loss = batch.transform['y'].transform(y)
@@ -363,9 +361,6 @@ class Generator(pl.LightningModule):
         y_hat_loss = self.predict_batch(batch,
                                         preprocess=False,
                                         postprocess=not self.scale_target)
-        # Compute predictions
-        # y_hat_loss = self._autoregressive_predict(batch, False)
-
         # Scale target and output, eventually
         if self.scale_target:
             y_loss = batch.transform['y'].transform(y)
