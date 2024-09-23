@@ -23,7 +23,7 @@ class GRGNModel(BaseModel):
                 decoder_order: int = 1,
                 layer_norm: bool = True,
                 dropout: float =.0,
-                steps_ahead: int = 1,
+                steps_ahead: int = 12,
                 ):
         super(GRGNModel, self).__init__()
         
@@ -120,8 +120,6 @@ class GRGNModel(BaseModel):
         output = None
         nextval = X
         noiser = torch.distributions.Normal(noise_mean, noise_stddev)
-        X_steps = X.shape[1]
-         
         
         with tqdm(total=steps, disable=disable_bar, desc='Generating', unit='step') as t:
             for _ in range(steps):
@@ -133,7 +131,7 @@ class GRGNModel(BaseModel):
                 noise = noiser.sample(gen.size()).to(X.device)
                 
                 nextval = gen + noise if add_noise else gen
-                output = torch.cat([output, gen[:, -1:, :, :]], dim=1) if output is not None else gen
+                output = torch.cat([output, gen[:, -1:, :, :]], dim=1) if output is not None else gen[:, -1:, :, :]
                 t.update(1)
 
         # Concatenate and inverse transform if scaler exists
@@ -143,7 +141,6 @@ class GRGNModel(BaseModel):
         return output
             
     def generate(self,
-             X: Tensor,
              edge_index: Adj,
              edge_weight: OptTensor = None,
              u: OptTensor = None,
@@ -156,24 +153,23 @@ class GRGNModel(BaseModel):
     
         # Check for the presence of a scaler in kwargs
         scaler = kwargs.get('scaler')
-        if scaler:
-            X = scaler.transform(X)
-        
+
         # nextval = X
         output = None
-        means = torch.ones(X).to(X.device) * noise_mean
-        stds = torch.ones_like(X).to(X.device) * noise_stddev
+        means = torch.ones((1, self.steps_ahead, self.n_nodes, self.input_size)) * noise_mean
+        stds = torch.ones((1, self.steps_ahead, self.n_nodes, self.input_size)) * noise_stddev
         noiser = torch.distributions.Normal(means, stds)
+        nextval = noiser.sample()
         
         with tqdm(total=steps, disable=disable_bar, desc='Generating', unit='step') as t:
             for _ in range(steps):
-                nextval = noiser.sample().to(X.device)
                 # Forward pass
-                out = self.forward(x=nextval, u=u, edge_index=edge_index, edge_weight=edge_weight)
+                out = self.forward(x=nextval[:, -self.steps_ahead:, :, :], u=u, edge_index=edge_index, edge_weight=edge_weight)
                 
                 gen = self.get_output(out, enc_dec_mean)
-
-                output = torch.cat([output, gen]) if output is not None else gen
+                
+                nextval = gen
+                output = torch.cat([output, gen[:, -1:, :, :]], dim=1) if output is not None else gen[:, -1:, :, :]
                 t.update(1)
 
         # Concatenate and inverse transform if scaler exists
@@ -182,9 +178,6 @@ class GRGNModel(BaseModel):
         
         return output
     
-    def apply_noise(self, gen, noise_mean, noise_stddev):
-        return gen + torch.normal(noise_mean, noise_stddev, size=gen.size())
-
     def predict(self,
             X: Tensor,
             edge_index: Adj,
@@ -198,24 +191,24 @@ class GRGNModel(BaseModel):
             X = scaler.transform(X)
         
         nextval = X
-        output = []
+        output = None
         steps = X.shape[0]
 
         with tqdm(total=steps, desc='Predicting', unit='step') as t:
             for i in range(steps):
-                nextval = X[i].reshape(1, 1, X.shape[-2], 1)
-                
                 # Forward pass
-                out = self.forward(x=nextval, u=None, edge_index=edge_index, edge_weight=edge_weight)
+                steps_ahead = self.steps_ahead if nextval.shape[1] > self.steps_ahead else nextval.shape[1]
+                out = self.forward(x=nextval[:, -steps_ahead:, :, :], u=None, edge_index=edge_index, edge_weight=edge_weight)
                 
                 # Get generated output
                 gen = self.get_output(out, enc_dec_mean)
                 
-                output.append(gen)
+                nextval = torch.cat([nextval[:, -steps_ahead:, :, :], gen[:, -1:, :, :]], dim=1)
+                
+                output = torch.cat([output, gen[:, -1:, :, :]], dim=1) if output is not None else gen[:, -1:, :, :]
                 t.update(1)
         
         # Concatenate and inverse transform if scaler exists
-        output = torch.cat(output)
         if scaler:
             output = scaler.inverse_transform(output)
         
@@ -250,29 +243,22 @@ class GRGNModel(BaseModel):
         if scaler:
             X = scaler.transform(X)
         
-        output = []
         steps = X.shape[0]
-        gen = X[0].reshape(1, 1, X.shape[-2], X.shape[-1])
+        output = X[0].reshape(1, 1, X.shape[-2], X.shape[-1])
+        
         with tqdm(total=steps, desc='Imputing', unit='step') as t:
-            for i in range(steps):
-                # Select the step's input
-                nextval = X[i].reshape(1, 1, X.shape[-2], X.shape[-1])
-                # Apply mask: Replace only values where mask is True (1)
-                imputed_step = torch.where(mask[i].reshape(1, 1, X.shape[-2], X.shape[-1]), gen, nextval)
-                
-                output.append(imputed_step)
-                
+            for i in range(1, steps):
+                steps_ahead = i if self.steps_ahead > i else self.steps_ahead
                 # Forward pass to get predictions
-                out = self.forward(x=nextval, u=None, edge_index=edge_index, edge_weight=edge_weight)
+                out = self.forward(x=output[:, -steps_ahead:, :, :], u=None, edge_index=edge_index, edge_weight=edge_weight)
                 
                 # Get generated output
                 gen = self.get_output(out, enc_dec_mean)
 
+                imputed_step = torch.where(mask[:, i:i+1, :, :], gen[:, -1:, :, :], X[:, i:i+1, :, :])
+                output = torch.cat([output, imputed_step[:, -1:, :, :]]) if output is not None else imputed_step 
                 t.update(1)
 
-        # Concatenate the output along the time axis
-        output = torch.cat(output)
-        
         # Inverse transform the output if a scaler is provided
         if scaler:
             output = scaler.inverse_transform(output)
