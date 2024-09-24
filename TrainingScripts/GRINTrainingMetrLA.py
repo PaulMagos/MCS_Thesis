@@ -17,13 +17,13 @@ from tsl.utils.casting import torch_to_numpy
 
 def run_imputation(model_params, optim, optim_params, batch_size):
     
-    p_fault, p_noise = 0.0015, 0.05
-    dataset = add_missing_values(PemsBay(),
+    p_fault, p_noise = 0., 0.25
+    dataset = add_missing_values(MetrLA(),
                                   p_fault=p_fault,
                                   p_noise=p_noise,
                                   min_seq=12,
                                   max_seq=12 * 4,
-                                  seed=56789)
+                                  seed=9101112)
     # encode time of the day and use it as exogenous variable
     # covariates = {'u': dataset.datetime_encoded('day').values}
     covariates = None
@@ -36,13 +36,13 @@ def run_imputation(model_params, optim, optim_params, batch_size):
     })
     
     # instantiate dataset
-    torch_dataset = ImputationDataset(target=dataset.dataframe(),
-                                      mask=dataset.training_mask,
-                                      eval_mask=dataset.eval_mask,
+    torch_dataset = ImputationDataset(target=dataset.dataframe()[-5000:],
+                                      mask=dataset.training_mask[-5000:],
+                                      eval_mask=dataset.eval_mask[-5000:],
                                       covariates=covariates,
                                       transform=MaskInput(),
                                       connectivity=adj,
-                                      window=1,
+                                      window=24,
                                       stride=1)
 
     scalers = {'target': StandardScaler(axis=(0, 1))}
@@ -113,7 +113,7 @@ def run_imputation(model_params, optim, optim_params, batch_size):
     )
 
     trainer = Trainer(
-        max_epochs=500,
+        max_epochs=300,
         default_root_dir='logs/prediction/grinMetr/',
         logger=exp_logger,
         accelerator='gpu' if torch.cuda.is_available() else 'cpu',
@@ -157,20 +157,22 @@ def run_imputation(model_params, optim, optim_params, batch_size):
 
 if __name__ == '__main__':
     model_params = {
-        'hidden_size': 32,
-        'embedding_size': 16,
+        'hidden_size': 64,
+        'ff_size': 64,
+        'embedding_size': 8,
         'n_layers': 1,
         'kernel_size': 2,
         'decoder_order': 1,
-        'layer_norm': True,
-        'dropout': 0.05,
-        'merge_mode': 'mean'
+        'layer_norm': False,
+        'dropout': 0,
+        'ff_dropout': 0,
+        'merge_mode': 'mlp'
     }
-    optim_params = {'lr': 0.00001, 'weight_decay': 0.01}
+    optim_params = {'lr': 0.001, 'weight_decay': 0}
     
-    optim = 'RMSprop' # SGD or Adam
+    optim = 'Adam' # SGD or Adam
     
-    batch_size = 1
+    batch_size = 32
     
     res = run_imputation(model_params, optim, optim_params, batch_size)
 
