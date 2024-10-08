@@ -186,6 +186,11 @@ class Generator(pl.LightningModule):
         autoregression_fn = self.model.autoregression
         return autoregression_fn(*args, **kwargs)
     
+    def imputation(self, *args, **kwargs):
+        """"""
+        imputation_fn = self.model.imputation
+        return imputation_fn(*args, **kwargs)
+    
     def predict(self, *args, **kwargs):
         """"""
         predict_fn = self.model.predict

@@ -23,7 +23,7 @@ class GRGNModel(BaseModel):
                 decoder_order: int = 1,
                 layer_norm: bool = True,
                 dropout: float =.0,
-                steps_ahead: int = 12,
+                steps_ahead: int = 5,
                 ):
         super(GRGNModel, self).__init__()
         
@@ -105,17 +105,18 @@ class GRGNModel(BaseModel):
              u: OptTensor = None,
              steps: int = 32,
              add_noise = True,
-             noise_mean: float = None,
-             noise_stddev: float = None,
+             noise_mean: float = 0.,
+             noise_stddev: float = 1.,
              disable_bar = False,
              enc_dec_mean = False,
+             exclude_bwd = False,
              **kwargs) -> Tensor:
     
         # Check for the presence of a scaler in kwargs
         scaler = kwargs.get('scaler')
         if scaler:
             X = scaler.transform(X)
-        
+        if exclude_bwd: self.exclude_bwd = True
         # nextval = X
         output = None
         nextval = X
@@ -137,6 +138,7 @@ class GRGNModel(BaseModel):
         # Concatenate and inverse transform if scaler exists
         if scaler:
             output = scaler.inverse_transform(output)
+        if exclude_bwd: self.exclude_bwd = False
         
         return output
             
@@ -149,10 +151,12 @@ class GRGNModel(BaseModel):
              noise_stddev: float = 5.,
              disable_bar = False,
              enc_dec_mean = False,
+             exclude_bwd = False,
              **kwargs) -> Tensor:
     
         # Check for the presence of a scaler in kwargs
         scaler = kwargs.get('scaler')
+        if exclude_bwd: self.exclude_bwd = True
 
         # nextval = X
         output = None
@@ -175,6 +179,7 @@ class GRGNModel(BaseModel):
         # Concatenate and inverse transform if scaler exists
         if scaler:
             output = scaler.inverse_transform(output)
+        if exclude_bwd: self.exclude_bwd = False
         
         return output
     
@@ -184,33 +189,36 @@ class GRGNModel(BaseModel):
             edge_weight: OptTensor = None,
             u: OptTensor = None,
             enc_dec_mean: bool = False,
+            steps = 32,
+            exclude_bwd = False,
             **kwargs) -> Tensor:
         
         scaler = kwargs.get('scaler')
         if scaler:
             X = scaler.transform(X)
         
-        nextval = X
+        if exclude_bwd: self.exclude_bwd = True
+        nextval = X.permute(1, 0, 2, 3)
         output = None
-        steps = X.shape[0]
-
+        steps = steps//nextval.shape[0]
+        
         with tqdm(total=steps, desc='Predicting', unit='step') as t:
             for i in range(steps):
                 # Forward pass
-                steps_ahead = self.steps_ahead if nextval.shape[1] > self.steps_ahead else nextval.shape[1]
-                out = self.forward(x=nextval[:, -steps_ahead:, :, :], u=None, edge_index=edge_index, edge_weight=edge_weight)
+                out = self.forward(x=nextval, u=None, edge_index=edge_index, edge_weight=edge_weight)
                 
                 # Get generated output
                 gen = self.get_output(out, enc_dec_mean)
                 
-                nextval = torch.cat([nextval[:, -steps_ahead:, :, :], gen[:, -1:, :, :]], dim=1)
+                nextval = gen
                 
-                output = torch.cat([output, gen[:, -1:, :, :]], dim=1) if output is not None else gen[:, -1:, :, :]
+                output = torch.cat([output, gen], dim=0) if output is not None else gen
                 t.update(1)
         
         # Concatenate and inverse transform if scaler exists
         if scaler:
             output = scaler.inverse_transform(output)
+        if exclude_bwd: self.exclude_bwd = False
         
         return output
     
@@ -222,46 +230,27 @@ class GRGNModel(BaseModel):
                    edge_weight: OptTensor = None,
                    u: OptTensor = None,
                    enc_dec_mean: bool = False,
+                    exclude_bwd = False,
                    **kwargs) -> Tensor:
-        """
-        Impute missing values in X based on the mask. Only the positions defined by the mask are replaced with model predictions.
-        
-        Args:
-            X: Input tensor (batch_size, time_steps, nodes, features).
-            mask: A binary tensor of the same shape as X. Positions with 1 (or True) are imputed.
-            edge_index: Edge index for the graph.
-            edge_weight: Optional edge weights for the graph.
-            u: Optional additional input features.
-            enc_dec_mean: Whether to use mean of the encoder and decoder outputs.
-            **kwargs: Optional keyword arguments like scaler.
-        
-        Returns:
-            A tensor with imputed values only in positions defined by the mask.
-        """
         
         scaler = kwargs.get('scaler')
         if scaler:
             X = scaler.transform(X)
+        if exclude_bwd: self.exclude_bwd = True
         
-        steps = X.shape[0]
-        output = X[0].reshape(1, 1, X.shape[-2], X.shape[-1])
+        # Forward pass to get predictions
+        out = self.forward(x=X, u=None, edge_index=edge_index, edge_weight=edge_weight)
         
-        with tqdm(total=steps, desc='Imputing', unit='step') as t:
-            for i in range(1, steps):
-                steps_ahead = i if self.steps_ahead > i else self.steps_ahead
-                # Forward pass to get predictions
-                out = self.forward(x=output[:, -steps_ahead:, :, :], u=None, edge_index=edge_index, edge_weight=edge_weight)
-                
-                # Get generated output
-                gen = self.get_output(out, enc_dec_mean)
-
-                imputed_step = torch.where(mask[:, i:i+1, :, :], gen[:, -1:, :, :], X[:, i:i+1, :, :])
-                output = torch.cat([output, imputed_step[:, -1:, :, :]]) if output is not None else imputed_step 
-                t.update(1)
+        # Get generated output
+        gen = self.get_output(out, enc_dec_mean)
+        
+        gen = torch.cat([X[0:1], gen[:-1]], dim=0).to(X.device)
+        output = torch.where(mask, gen, X)
 
         # Inverse transform the output if a scaler is provided
         if scaler:
             output = scaler.inverse_transform(output)
+        if exclude_bwd: self.exclude_bwd = False
 
         return output
     
@@ -276,6 +265,7 @@ class GRGNModel(BaseModel):
         def compute_mean(fwd, bwd):
             out_fwd = self.compute_for(fwd[..., :self.stds_index], fwd[..., self.stds_index:self.weights_index], fwd[..., self.weights_index:])
             out_bwd = self.compute_for(bwd[..., :self.stds_index], bwd[..., self.stds_index:self.weights_index], bwd[..., self.weights_index:])
+            if self.exclude_bwd: return out_fwd
             return torch.mean(torch.cat([out_fwd, out_bwd], axis=-1), axis=-1, keepdim=True)
 
         output = compute_mean(dec_fwd, dec_bwd)
@@ -285,7 +275,6 @@ class GRGNModel(BaseModel):
             output = torch.mean(output, axis=-1, keepdim=True)
         
         return output
-    
     
     def compute_for(self, means, stds, weights):
         """
@@ -321,7 +310,7 @@ class GRGNModel(BaseModel):
         selected_stds = stds[batch_indices, seq_indices, node_indices, m]
 
         # Generate normally distributed random values using the selected means and stds
-        gen = torch.distributions.Normal(selected_means, torch.sqrt(selected_stds)).sample().unsqueeze(-1)
+        gen = torch.distributions.Normal(selected_means, torch.sqrt(selected_stds)).rsample().unsqueeze(-1)
         
         return gen
     

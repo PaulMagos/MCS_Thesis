@@ -73,15 +73,29 @@ class LogLikelihood(Metric):
         result = (result1 + result2)/2
         
         return result
-
-    def update(self, y_pred, y_true, **kwargs):
-        if not self.enc and not self.dec:
-            self.enc = True
+    
+    def bi_loss(self, y_pred, y_true, **kwargs):
+        if self.enc and self.dec:
+            self.dec = False
             loss_enc = self.loss_function(y_pred, y_true, **kwargs)
             self.enc = False
             self.dec = True
             loss_dec = self.loss_function(y_pred, y_true, **kwargs)
+            self.enc = True
+            loss = (loss_enc + loss_dec)/2
+        else:
+            # Accumulate the loss and track the number of samples processed
+            loss = self.loss_function(y_pred, y_true, **kwargs)
+        return loss
+
+    def update(self, y_pred, y_true, **kwargs):
+        if self.enc and self.dec:
             self.dec = False
+            loss_enc = self.loss_function(y_pred, y_true, **kwargs)
+            self.enc = False
+            self.dec = True
+            loss_dec = self.loss_function(y_pred, y_true, **kwargs)
+            self.enc = True
             loss = (loss_enc + loss_dec)/2
         else:
             # Accumulate the loss and track the number of samples processed
