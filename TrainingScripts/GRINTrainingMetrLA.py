@@ -113,7 +113,7 @@ def run_imputation(model_params, optim, optim_params, batch_size):
     )
 
     trainer = Trainer(
-        max_epochs=500,
+        max_epochs=300,
         default_root_dir='logs/prediction/grinMetr/',
         logger=exp_logger,
         accelerator='gpu' if torch.cuda.is_available() else 'cpu',
@@ -157,20 +157,22 @@ def run_imputation(model_params, optim, optim_params, batch_size):
 
 if __name__ == '__main__':
     model_params = {
-        'hidden_size': 32,
-        'embedding_size': 16,
+        'hidden_size': 64,
+        'ff_size': 64,
+        'embedding_size': 8,
         'n_layers': 1,
         'kernel_size': 2,
         'decoder_order': 1,
-        'layer_norm': True,
-        'dropout': 0.05,
-        'merge_mode': 'mean'
+        'layer_norm': False,
+        'dropout': 0,
+        'ff_dropout': 0,
+        'merge_mode': 'mlp'
     }
-    optim_params = {'lr': 0.00001, 'weight_decay': 0.01}
+    optim_params = {'lr': 0.001, 'weight_decay': 0}
     
-    optim = 'RMSprop' # SGD or Adam
+    optim = 'Adam' # SGD or Adam
     
-    batch_size = 1
+    batch_size = 32
     
     res = run_imputation(model_params, optim, optim_params, batch_size)
 

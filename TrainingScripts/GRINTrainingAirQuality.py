@@ -8,7 +8,6 @@ from tsl.nn.models import GRINModel
 from tsl.data import SpatioTemporalDataset, SpatioTemporalDataModule, ImputationDataset
 from tsl.data.preprocessing import StandardScaler
 from tsl.datasets import AirQuality, MetrLA, PemsBay
-from tsl.ops.imputation import add_missing_values
 from tsl.transforms import MaskInput
 from tsl.engines import Imputer
 from tsl.metrics import numpy as numpy_metrics
@@ -17,12 +16,7 @@ from tsl.utils.casting import torch_to_numpy
 
 def run_imputation(model_params, optim, optim_params, batch_size):
     p_fault, p_noise = 0, 0.25
-    dataset = add_missing_values(PemsBay(),
-                                  p_fault=p_fault,
-                                  p_noise=p_noise,
-                                  min_seq=12,
-                                  max_seq=12 * 4,
-                                  seed=56789)
+    dataset = AirQuality(impute_nans=True, small=True)
     # encode time of the day and use it as exogenous variable
     # covariates = {'u': dataset.datetime_encoded('day').values}
     covariates = None
