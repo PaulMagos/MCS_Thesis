@@ -32,7 +32,7 @@ class GTM(nn.Module):
         gmm = self.gmm(out)
         return gmm
 
-    def train_step(self, train_data, exo_var=None, window=1, horizon=1, epochs = 1):
+    def train_step(self, train_data, exo_var=None, batch_size=1, window=1, horizon=1, epochs = 1):
         train_data = train_data.to(self.device)
         val_data = train_data
         if exo_var is not None:
@@ -51,7 +51,7 @@ class GTM(nn.Module):
             losses_epoch = []
             
             with tqdm(total=batches) as pbar:
-                for batch in range(batches):
+                for batch in range(0, batches, batch_size):
                     for i in range(windows):
                         batch_idx = i * window
                         
@@ -66,7 +66,7 @@ class GTM(nn.Module):
                         losses_epoch.append(loss.item())
                         mean_loss = np.mean(losses_epoch)
                     pbar.set_description(f"Loss {mean_loss}")
-                    pbar.update(1)
+                    pbar.update(batch_size)
 
             mean_loss = np.mean(losses_epoch)
             history['loss'].append(mean_loss)
@@ -92,12 +92,7 @@ class GTM(nn.Module):
                 
                 mu, sigma, pi = self(inputs)
                 
-                means = mu.reshape(data.shape[0], i+1, M, D)
-                stds = sigma.unsqueeze(-1)
-                gmm_weights = pi.unsqueeze(-1)
-                
-                pred = GMM.sample(means, stds, gmm_weights)
-                pred = torch.sum(pred, axis=-2).to(self.device)
+                pred = GMM.sample(mu, sigma, pi).to(self.device)
                 
                 output = torch.concat([output, pred[:, i:i+1]], axis=1)
                 pbar.update(1)
@@ -105,11 +100,9 @@ class GTM(nn.Module):
         return np.array(output.cpu().detach())
 
     def generate_step(self, shape: tuple, exo_var=None, window=None, horizon=None):
-        M = self.gmm.M
         
         num_timeseries = shape[0]
         steps = shape[1]
-        D = shape[2]
         
         shape = shape
         
@@ -118,28 +111,31 @@ class GTM(nn.Module):
         if horizon is None:
             horizon = self.horizon
         
-        input_shape = (num_timeseries, window, D)
+        input_shape = (1, window, shape[2])
+        
+        mu, sigma, pi = self(torch.ones(input_shape))
+        inputs = GMM.sample(mu, sigma, pi)
        
         self.eval()
             
-        input = torch.ones(input_shape)
-        output = None
         
-        with tqdm(total=steps//horizon) as pbar:
-            for i in range(steps//horizon):
-                if exo_var is not None:
-                    input = torch.cat([exo_var[:, i*horizon:window + i*horizon], input], dim=-1)
-                
-                mu, sigma, pi = self(input)
-                
-                means = mu.reshape(num_timeseries, mu.shape[1], M, D)
-                stds = sigma.unsqueeze(-1)
-                gmm_weights = pi.unsqueeze(-1)
-
-                pred = GMM.sample(means, stds, gmm_weights)
-                pred = torch.sum(pred, axis=-2).to(self.device)
-                
-                output = torch.concat([output, pred[:, -horizon:]], axis=1) if output is not None else pred[:, -horizon:]
-                input = pred[:, -window:]
-                pbar.update(1)
-        return np.array(output.cpu().detach())
+        total_output = None
+        
+        with tqdm(total=num_timeseries, disable=True if num_timeseries == 1 else False) as pbarTS:
+            for ou in range(num_timeseries):
+                output = None
+                with tqdm(total=steps//horizon, disable=True if num_timeseries > 1 else False) as pbar:
+                    for i in range(steps//horizon):
+                        if exo_var is not None:
+                            inputs = torch.cat([exo_var[ou:ou+1, i*horizon:window + i*horizon], input], dim=-1)
+                        
+                        mu, sigma, pi = self(inputs)
+                        
+                        pred = GMM.sample(mu, sigma, pi).to(self.device)
+                        
+                        output = torch.concat([output, pred[:, -horizon:]], axis=1) if output is not None else pred[:, -horizon:]
+                        inputs = pred[:, -window:]
+                        pbar.update(1)
+                total_output = torch.cat([total_output, output], dim=0) if total_output is not None else output
+                pbarTS.update(1)
+        return np.array(total_output.cpu().detach())

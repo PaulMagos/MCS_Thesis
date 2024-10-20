@@ -31,9 +31,16 @@ class GMM(nn.Module):
         return mu, sigma, pi
     
     @staticmethod
-    def sample(means, sigmas, alphas):
-        dist = torch.distributions.Normal(means, torch.sqrt(sigmas))
-        return alphas * dist.rsample()
+    def sample(mu, sigmas, pis):
+        mu = mu.reshape(mu.shape[0], mu.shape[1], sigmas.shape[-1], mu.shape[-1] // sigmas.shape[-1])
+        sigmas = sigmas.unsqueeze(-1)
+        pis = pis.unsqueeze(-1)
+        
+        dist = torch.distributions.Normal(mu, torch.sqrt(sigmas))
+        
+        out = pis * dist.sample()
+        out = torch.sum(out, axis=-2)
+        return out
     
     @staticmethod
     def get_loss():
