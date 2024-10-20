@@ -91,13 +91,14 @@ def plot_boxplots(original_data, generated_data, feature_name,
 def plot_pca(original_data, generated_data, 
              original_label='Original', 
              generated_label='Generated', 
+             component_to_plot=(0, 1),
              custom_title=''):
     """
     Applies PCA to both original and generated datasets and plots the 2D projection.
     :param original_data: pd.DataFrame or np.array, original dataset.
     :param generated_data: pd.DataFrame or np.array, generated dataset.
     """
-    pca = PCA(n_components=2)
+    pca = PCA(n_components=0.99)
     
     # original_pca = pca.fit_transform(original_data)
     # generated_pca = pca.fit_transform(generated_data)
@@ -105,9 +106,10 @@ def plot_pca(original_data, generated_data,
     original_pca = pca.fit(original_data)
     generated_pca = original_pca.transform(generated_data)
     original_pca = original_pca.transform(original_data)
+    print(pca.n_components_)
     plt.figure(figsize=(10, 6))
-    plt.scatter(original_pca[:, 0], original_pca[:, 1], alpha=0.6, label=original_label, c='gray')
-    plt.scatter(generated_pca[:, 0], generated_pca[:, 1], alpha=0.4, label=generated_label, c='red')
+    plt.scatter(original_pca[:, component_to_plot[0]], original_pca[:, component_to_plot[1]], alpha=0.6, label=original_label, c='gray')
+    plt.scatter(generated_pca[:, component_to_plot[0]], generated_pca[:, component_to_plot[1]], alpha=0.4, label=generated_label, c='red')
     
     plt.xlabel('Principal Component 1')
     plt.ylabel('Principal Component 2')
