@@ -102,14 +102,23 @@ def plot_pca(original_data, generated_data,
     
     # original_pca = pca.fit_transform(original_data)
     # generated_pca = pca.fit_transform(generated_data)
-    
-    original_pca = pca.fit(original_data)
-    generated_pca = original_pca.transform(generated_data)
-    original_pca = original_pca.transform(original_data)
-    print(pca.n_components_)
     plt.figure(figsize=(10, 6))
-    plt.scatter(original_pca[:, component_to_plot[0]], original_pca[:, component_to_plot[1]], alpha=0.6, label=original_label, c='gray')
-    plt.scatter(generated_pca[:, component_to_plot[0]], generated_pca[:, component_to_plot[1]], alpha=0.4, label=generated_label, c='red')
+    original_pca, generated_pca = [], []
+    
+    original_pca.append(pca.fit_transform(original_data[0]))
+    plt.scatter(original_pca[0][:, component_to_plot[0]], original_pca[0][:, component_to_plot[1]], alpha=0.6, label=original_label, c='gray')
+    for i in range(1, len(original_data)):
+        original_pca.append(pca.fit_transform(original_data[i]))
+        plt.scatter(original_pca[i][:, component_to_plot[0]], original_pca[i][:, component_to_plot[1]], alpha=0.6, c='gray')
+        
+    generated_pca.append(pca.transform(generated_data[0]))
+    plt.scatter(generated_pca[0][:, component_to_plot[0]], generated_pca[0][:, component_to_plot[1]], label=generated_label, alpha=0.4, c='red')
+    
+    for i in range(1, len(generated_data)):
+        generated_pca.append(pca.transform(generated_data[i]))
+        plt.scatter(generated_pca[i][:, component_to_plot[0]], generated_pca[i][:, component_to_plot[1]], alpha=0.4, c='red')
+    
+    print(pca.n_components_)
     
     plt.xlabel('Principal Component 1')
     plt.ylabel('Principal Component 2')
