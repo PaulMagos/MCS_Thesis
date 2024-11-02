@@ -16,11 +16,9 @@ __all__ = ['GGTM']
 class GGTM(nn.Module):
     def __init__(self, input_size, output_size, hidden_size, mixture_dim, dropout, num_layers, bidirectional, lr, weight_decay, callbacks, device, exo_size=0) -> None:
         super(GGTM, self).__init__()
-        self.lin_in = nn.Linear(input_size, hidden_size)
-        self.diff_conv = DiffConv(hidden_size, hidden_size, 2, root_weight=False)   
+        self.diff_conv = DiffConv(input_size+exo_size, hidden_size, 2, root_weight=False)   
         # LSTM Layer
-        # self.lstm = nn.LSTM(input_size=input_size+hidden_size+exo_size, hidden_size=hidden_size, dropout=dropout, num_layers=num_layers, device=device, bidirectional=bidirectional, batch_first=True)
-        self.gru = nn.GRU(input_size=input_size+hidden_size+exo_size, hidden_size=hidden_size, dropout=dropout, num_layers=num_layers, device=device, bidirectional=bidirectional, batch_first=True)
+        self.lstm = nn.LSTM(input_size=input_size+exo_size+hidden_size, hidden_size=hidden_size, dropout=dropout, num_layers=num_layers, device=device, bidirectional=bidirectional, batch_first=True)
         self.gmm = GMM(mixture_dim, hidden_size*(2 if bidirectional else 1), output_size, device = device)
         self.input_size = input_size
         self.loss = GMM.get_loss()
@@ -40,14 +38,17 @@ class GGTM(nn.Module):
                 
     def forward(self, x, exo_var=None):
         edge_i, edge_w = self.get_adj(x[0])
-        x_in = self.lin_in(x)
-        diff_ = self.diff_conv(x_in, edge_i, edge_w)
-        x = torch.cat([diff_, x], dim=-1)
         
         if exo_var is not None:
-            x = torch.cat([exo_var, x], dim=-1)
+            x_in = torch.cat([exo_var, x], dim=-1)
+        else:
+            x_in = x
             
-        out = self.gru(x)[0]
+        diff_ = self.diff_conv(x_in, edge_i, edge_w)
+        x_in = torch.cat([diff_, x_in], dim=-1)
+        
+        out = self.lstm(x_in)[0]
+
         gmm = self.gmm(out)
         return gmm
 
@@ -95,7 +96,7 @@ class GGTM(nn.Module):
                 break
         return self, history
 
-    def predict_step(self, data, exo_var=None, start = 0, steps = 7):
+    def predict_step(self, data, exo_var=None, start = 0, steps = 7, window=23):
         M = self.gmm.M
         D = data.shape[-1]
         self.eval()
@@ -104,24 +105,21 @@ class GGTM(nn.Module):
         
         with tqdm(total=steps) as pbar:
             for i in range(start, start+steps):
-                inputs = data[:, :i+1]
+                inputs = data[:, i-window if i>window else 0:i+1]
                 
-                if exo_var is not None:
-                    inputs = torch.cat([exo_var[:, :i+1], inputs], dim=-1) 
-                
-                mu, sigma, pi = self(inputs)
+                mu, sigma, pi = self(inputs, exo_var[:, i-window if i>window else 0:i+1])
                 
                 pred = GMM.sample(mu, sigma, pi).to(self.device)
                 
-                output = torch.concat([output, pred[:, i:i+1]], axis=1)
+                output = torch.concat([output, pred[:, -1:]], axis=1)
                 pbar.update(1)
         
         return np.array(output.cpu().detach())
 
     def generate_step(self, shape: tuple, exo_var=None, window=None, horizon=None):
+        self.eval()
         
         num_timeseries = shape[0]
-        steps = shape[1]
         
         shape = shape
         
@@ -130,34 +128,24 @@ class GGTM(nn.Module):
         if horizon is None:
             horizon = self.horizon
         
-        input_shape = (1, window, shape[2])
+        steps = shape[1]
         
+        input_shape = (num_timeseries, window, shape[2])
+        exo_shape = (num_timeseries, window, exo_var.shape[-1])
         
-        exo = exo_var[0:1, :window] if exo_var is not None else None
+        exo = torch.ones(exo_shape)
         
         mu, sigma, pi = self(torch.zeros(input_shape), exo)
         inputs = GMM.sample(mu, sigma, pi)
-       
-        self.eval()
-            
         
-        total_output = None
-        
-        with tqdm(total=num_timeseries, disable=True if num_timeseries == 1 else False) as pbarTS:
-            for ou in range(num_timeseries):
-                output = None
-                with tqdm(total=(steps-1)//horizon, disable=True if num_timeseries > 1 else False) as pbar:
-                    for i in range((steps-1)//horizon):
-                        if exo_var is not None:
-                            exo = exo_var.view(exo_var.shape[0]*exo_var.shape[1], 1)[i+1:i+1 + window].view(1, window, 1) if exo_var is not None else None
-                        
-                        mu, sigma, pi = self(inputs, exo)
-                        
-                        pred = GMM.sample(mu, sigma, pi).to(self.device)
-                        
-                        output = torch.concat([output, pred[:, -horizon:]], axis=1) if output is not None else pred[:, -horizon:]
-                        inputs = pred[:, -window:]
-                        pbar.update(1)
-                total_output = torch.cat([total_output, output], dim=0) if total_output is not None else output
-                pbarTS.update(1)
-        return np.array(total_output.cpu().detach())
+        output = None
+        with tqdm(total=steps//horizon) as pbar:
+            for i in range(steps//horizon):
+                mu, sigma, pi = self(inputs, exo_var[:, i:window + i])
+                
+                pred = GMM.sample(mu, sigma, pi).to(self.device)
+                
+                output = torch.concat([output, pred[:, -horizon:]], axis=1) if output is not None else pred[:, -horizon:]
+                inputs = pred[:, -window:]
+                pbar.update(1)
+        return np.array(output.cpu().detach())

@@ -11,7 +11,7 @@ def get_Synth():
     Train = np.load(f'{base_path}/data/Synth/train.npy')
     return Train
 
-def split_data(name, dataset, window=1):
+def split_data(name, dataset, window):
     if not (os.path.exists(f'{base_path}/data/{name}/train.npy') and os.path.exists(f'{base_path}/data/{name}/preprocessing.npy')):
         Train = dataset
                     
@@ -23,19 +23,17 @@ def split_data(name, dataset, window=1):
     else:
         Train = np.load(f'{base_path}/data/{name}/train.npy')
         
-    Train = normalize(name=name, x=np.array(Train))
-    
     Train = Train.reshape(Train.shape[0]//window, window, Train.shape[-1])
     return Train
     
     
     
-def get_dataset(name='Synth', dataset=None):
+def get_dataset(name='Synth', dataset=None, window=1):
     match(name):
         case 'Synth':
             train = get_Synth()
         case _:
-            train = split_data(name, dataset)
+            train = split_data(name, dataset, window=window)
         
     val = train
     test = train
