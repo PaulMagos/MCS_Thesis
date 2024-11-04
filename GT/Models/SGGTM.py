@@ -31,6 +31,7 @@ class SGGTM(nn.Module):
             
         self.edge_index = edge_index
         self.edge_weight = edge_weight
+        self.input_size = input_size
             
         self.horizon = 1
         self.window = 1
@@ -41,18 +42,23 @@ class SGGTM(nn.Module):
         return edge_index, edge_weights.float()
                 
     def forward(self, x, exo_var=None):
-        edge_i, edge_w = self.get_adj(x[0])
-        
         if exo_var is not None:
-            x_in = torch.cat([exo_var, x], dim=-1)
+                    x_in = torch.cat([exo_var, x], dim=-1)
         else:                                                                                                                                                                                                                                     
             x_in = x
+        
+        diff_tempo = torch.Tensor()
+        
+        for i in range(len(x)):
+            edge_i, edge_w = self.get_adj(x[i])
+            res = self.tempo_diff_conv(x_in[i], edge_i, edge_w).unsqueeze(0)
+            diff_tempo = torch.cat([diff_tempo, res], dim=0)
             
-        diff_tempo = self.tempo_diff_conv(x_in, edge_i, edge_w)
         diff_spatio = torch.Tensor()
         for step in range(x.shape[1]):
             res = self.spatio_diff_conv(x_in[:, step:step+1].permute(0, 2, 1), self.edge_index, self.edge_weight).permute(0, 2, 1)
             diff_spatio = torch.cat([diff_spatio, res], dim=1)
+            
         x_in = torch.cat([diff_tempo, diff_spatio, x_in], dim=-1)
         
         out = self.lstm(x_in)[0]
@@ -138,7 +144,7 @@ class SGGTM(nn.Module):
         
         steps = shape[1]
         
-        input_shape = (num_timeseries, window, shape[2])
+        input_shape = (num_timeseries, window, self.input_size)
         exo_shape = (num_timeseries, window, exo_var.shape[-1])
         
         exo = torch.ones(exo_shape)

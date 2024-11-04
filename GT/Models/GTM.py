@@ -23,6 +23,7 @@ class GTM(nn.Module):
         self.callbacks = {}
         if 'EarlyStopping' in callbacks:
             self.callbacks['EarlyStopping'] = EarlyStopping()
+        self.input_size = input_size
             
         self.horizon = 1
         self.window = 1
@@ -112,9 +113,9 @@ class GTM(nn.Module):
         if horizon is None:
             horizon = self.horizon
         
-        input_shape = (num_timeseries, window, shape[2])
+        input_shape = (num_timeseries, window, self.input_size + exo_var.shape[-1] if exo_var is not None else self.input_size)
         
-        mu, sigma, pi = self(torch.zeros(input_shape))
+        mu, sigma, pi = self(torch.rand(input_shape))
         inputs = GMM.sample(mu, sigma, pi)
        
         output = None

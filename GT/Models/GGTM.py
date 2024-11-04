@@ -27,7 +27,7 @@ class GGTM(nn.Module):
         self.callbacks = {}
         if 'EarlyStopping' in callbacks:
             self.callbacks['EarlyStopping'] = EarlyStopping()
-            
+        self.input_size = input_size
         self.horizon = 1
         self.window = 1
     
@@ -37,15 +37,19 @@ class GGTM(nn.Module):
         return edge_index, edge_weights.float()
                 
     def forward(self, x, exo_var=None):
-        edge_i, edge_w = self.get_adj(x[0])
-        
         if exo_var is not None:
             x_in = torch.cat([exo_var, x], dim=-1)
-        else:
+        else:                                                                                                                                                                                                                                     
             x_in = x
+        
+        diff_tempo = torch.Tensor()
+        
+        for i in range(len(x)):
+            edge_i, edge_w = self.get_adj(x[i])
+            res = self.diff_conv(x_in[i], edge_i, edge_w).unsqueeze(0)
+            diff_tempo = torch.cat([diff_tempo, res], dim=0)
             
-        diff_ = self.diff_conv(x_in, edge_i, edge_w)
-        x_in = torch.cat([diff_, x_in], dim=-1)
+        x_in = torch.cat([diff_tempo, x_in], dim=-1)
         
         out = self.lstm(x_in)[0]
 
@@ -130,12 +134,12 @@ class GGTM(nn.Module):
         
         steps = shape[1]
         
-        input_shape = (num_timeseries, window, shape[2])
+        input_shape = (num_timeseries, window, self.input_size)
         exo_shape = (num_timeseries, window, exo_var.shape[-1])
         
-        exo = torch.ones(exo_shape)
+        exo = torch.rand(exo_shape)
         
-        mu, sigma, pi = self(torch.zeros(input_shape), exo)
+        mu, sigma, pi = self(torch.rand(input_shape), exo)
         inputs = GMM.sample(mu, sigma, pi)
         
         output = None

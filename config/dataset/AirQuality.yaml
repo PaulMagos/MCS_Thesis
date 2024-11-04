@@ -1,0 +1,15 @@
+dataset:
+  name: AirQuality
+  max_length: 8736
+  connectivity:
+    method: distance
+    threshold: 0.1
+    include_self: False
+    layout: edge_index
+  sequence_index: Date
+  seq_length: 168
+  mixture_dim: 36
+  sample_len: 24
+  batch_size: 13
+  window: 23
+  horizon: 1
