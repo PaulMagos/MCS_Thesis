@@ -35,7 +35,7 @@ class ASGGTM(nn.Module):
         self.window = 1
     
     def get_adj(self, ts):
-        nvvg_adj = torch.tensor(natural_vvg(torch.tensor(ts).numpy(), weight_method=WeightMethod.TIME_DIFF_EUCLIDEAN_DISTANCE, directed=True))
+        nvvg_adj = torch.tensor(natural_vvg(torch.tensor(ts).cpu().numpy(), weight_method=WeightMethod.TIME_DIFF_EUCLIDEAN_DISTANCE, directed=True))
         edge_index, edge_weights = adj_to_edge_index(nvvg_adj)
         return edge_index, edge_weights.float()
                 
@@ -45,19 +45,19 @@ class ASGGTM(nn.Module):
         else:                                                                                                                                                                                                                                     
             x_in = x
         
-        diff_tempo = torch.Tensor()
+        diff_tempo = torch.Tensor().to(self.device)
         
         for i in range(len(x)):
             edge_i, edge_w = self.get_adj(x[i])
             res = self.tempo_diff_conv(x_in[i], edge_i, edge_w).unsqueeze(0)
             diff_tempo = torch.cat([diff_tempo, res], dim=0)
             
-        adp = F.softmax(F.relu(torch.mm(self.N1, self.N2)), dim=1)
+        adp = F.softmax(F.relu(torch.mm(self.N1, self.N2)), dim=1).to(self.device)
         
         spatio_edge_index, spatio_edge_weight = adj_to_edge_index(adp)
             
         
-        diff_spatio = torch.Tensor()
+        diff_spatio = torch.Tensor().to(self.device)
         for step in range(x.shape[1]):
             res = self.spatio_diff_conv(x_in[:, step:step+1].permute(0, 2, 1), spatio_edge_index, spatio_edge_weight).permute(0, 2, 1)
             diff_spatio = torch.cat([diff_spatio, res], dim=1)

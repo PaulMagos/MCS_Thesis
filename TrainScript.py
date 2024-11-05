@@ -19,7 +19,7 @@ from sklearn.gaussian_process.kernels import RBF
 MODELS_PATH = f'./models'
 GEN_PATH = f'./Datasets/GeneratedDatasets/'
 IMAGES_PATH = f'./PNG'
-DEVICE = 'cuda:1' if torch.cuda.is_available() else 'cpu'
+DEVICE = 'cpu'
 torch.set_default_device(DEVICE)
 
 
@@ -40,12 +40,20 @@ def datetime_encoded(index, units) -> pd.DataFrame:
 
 def get_model_class(model_str):
     if model_str == 'gtm':
+        DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
+        torch.set_default_device(DEVICE)
         model = GTM
     elif model_str == 'ggtm':
+        DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
+        torch.set_default_device(DEVICE)
         model = GGTM
     elif model_str == 'sggtm':
+        DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
+        torch.set_default_device(DEVICE)
         model = SGGTM
     elif model_str == 'asggtm':
+        DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
+        torch.set_default_device(DEVICE)
         model = ASGGTM
     elif model_str == 'dgan':
         model = DGAN
@@ -78,7 +86,7 @@ def filter_model_args(model_str, model_kwargs, cfg: DictConfig):
 
 def get_dataset_(dataset_name: str, cfg: DictConfig):
     if dataset_name.startswith('air'):
-        max_size = cfg.dataset.max_lengths
+        max_size = cfg.dataset.max_length
         data = AirQuality(impute_nans=True, small=True)
         if cfg.model.graph:
             adj = data.get_connectivity(**cfg.dataset.connectivity)
@@ -186,15 +194,15 @@ def train(model, dataset, exo_var, cfg: DictConfig):
         model, history = model.train_step(dataset, exo_var, batch_size=cfg.dataset.batch_size, window=cfg.dataset.window, horizon=cfg.dataset.horizon, epochs=cfg.model.training.epochs)
         save_model(model, cfg, history)     
     elif cfg.model.name.lower() == 'dgan':
-        model.train_numpy(np.array(dataset))
+        model.train_numpy(np.array(dataset.cpu()))
         save_model(model, cfg)     
     elif cfg.model.name.lower() == 'par':
         model.fit(data=dataset, segment_size=cfg.dataset.sample_len, entity_columns=['TS'], sequence_index=cfg.dataset.sequence_index)
         save_model(model, cfg)     
     elif cfg.model.name.lower() == 'gaussianregressor':
         train = dataset.reshape(dataset.shape[0]*dataset.shape[1], dataset.shape[2])
-        val = train[1:]
-        train = train[:-1]
+        val = train[1:].to('cpu')
+        train = train[:-1].to('cpu')
         print('Gaussian Regressor Training Start.')
         model.fit(train, val)
         print('Gaussian Regressor Training End.')
@@ -308,6 +316,6 @@ def run_imputation(cfg: DictConfig):
     # return res
     
 if __name__ == '__main__':
-    exp = Experiment(run_fn=run_imputation, config_path='/Users/paulmagos/Documents/TSGen/config/', config_name='config.yaml')
+    exp = Experiment(run_fn=run_imputation, config_path='/data/p.magos/TSGen/config/', config_name='config.yaml')
     res = exp.run()
     # logger.info(res)
