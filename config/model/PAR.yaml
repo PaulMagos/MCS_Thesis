@@ -7,3 +7,4 @@ model:
   embedding: False
   training: 
     entity_column: TS
+  device: cpu

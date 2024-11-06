@@ -1,0 +1,28 @@
+dataset:
+  dataset:
+    name: ExchangeBenchmark
+    sequence_index: Date
+    max_length: 7560
+    seq_length: 216
+    mixture_dim: 16
+    batch_size: 7
+    sample_len: 6
+    emb_size: 4
+    window: 20
+    horizon: 1
+model:
+  model:
+    name: PAR
+    hparams:
+      epochs: 100
+      cuda: true
+    graph: false
+    embedding: false
+    training:
+      entity_column: TS
+    device: cpu
+seed: 42
+run:
+  seed: 42
+  dir: /data/p.magos/TSGen/outputs/2024-11-06/13-48-40
+  name: 2024-11-06_13-48-40_42

@@ -11,5 +11,6 @@ dataset:
   mixture_dim: 36
   sample_len: 24
   batch_size: 13
+  emb_size: 10
   window: 23
   horizon: 1

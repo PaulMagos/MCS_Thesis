@@ -16,8 +16,8 @@ __all__ = ['SGGTM']
 class SGGTM(nn.Module):
     def __init__(self, input_size, output_size, hidden_size, mixture_dim, dropout, num_layers, bidirectional, lr, weight_decay, callbacks, device, edge_index, edge_weight, exo_size=0) -> None:
         super(SGGTM, self).__init__()
-        self.tempo_diff_conv = DiffConv(input_size+exo_size, hidden_size, 2, root_weight=False)   
-        self.spatio_diff_conv = DiffConv(1, 1, 2, root_weight=False)   
+        self.tempo_diff_conv = DiffConv(input_size+exo_size, hidden_size, 2, root_weight=False).to(device)  
+        self.spatio_diff_conv = DiffConv(1, 1, 2, root_weight=False).to(device)
         # LSTM Layer
         self.lstm = nn.LSTM(input_size=(input_size+exo_size)*2+hidden_size, hidden_size=hidden_size, dropout=dropout, num_layers=num_layers, device=device, bidirectional=bidirectional, batch_first=True)
         self.gmm = GMM(mixture_dim, hidden_size*(2 if bidirectional else 1), output_size, device = device)
@@ -29,32 +29,32 @@ class SGGTM(nn.Module):
         if 'EarlyStopping' in callbacks:
             self.callbacks['EarlyStopping'] = EarlyStopping()
             
-        self.edge_index = edge_index
-        self.edge_weight = edge_weight
+        self.edge_index = edge_index.to(self.device)  
+        self.edge_weight = edge_weight.to(self.device)  
         self.input_size = input_size
             
         self.horizon = 1
         self.window = 1
     
     def get_adj(self, ts):
-        nvvg_adj = torch.tensor(natural_vvg(torch.tensor(ts).numpy(), weight_method=WeightMethod.TIME_DIFF_EUCLIDEAN_DISTANCE, directed=True))
+        nvvg_adj = torch.tensor(natural_vvg(torch.tensor(ts).cpu().numpy(), weight_method=WeightMethod.TIME_DIFF_EUCLIDEAN_DISTANCE, directed=True))
         edge_index, edge_weights = adj_to_edge_index(nvvg_adj)
-        return edge_index, edge_weights.float()
+        return edge_index.to(self.device), edge_weights.float().to(self.device)
                 
     def forward(self, x, exo_var=None):
         if exo_var is not None:
-                    x_in = torch.cat([exo_var, x], dim=-1)
+            x_in = torch.cat([exo_var, x], dim=-1)
         else:                                                                                                                                                                                                                                     
             x_in = x
         
-        diff_tempo = torch.Tensor()
+        diff_tempo = torch.Tensor().to(self.device)
         
         for i in range(len(x)):
             edge_i, edge_w = self.get_adj(x[i])
-            res = self.tempo_diff_conv(x_in[i], edge_i, edge_w).unsqueeze(0)
+            res = self.tempo_diff_conv(x_in[i], edge_i, edge_w).unsqueeze(0).to(self.device)
             diff_tempo = torch.cat([diff_tempo, res], dim=0)
             
-        diff_spatio = torch.Tensor()
+        diff_spatio = torch.Tensor().to(self.device)
         for step in range(x.shape[1]):
             res = self.spatio_diff_conv(x_in[:, step:step+1].permute(0, 2, 1), self.edge_index, self.edge_weight).permute(0, 2, 1)
             diff_spatio = torch.cat([diff_spatio, res], dim=1)
@@ -69,6 +69,7 @@ class SGGTM(nn.Module):
     def train_step(self, train_data, exo_var=None, batch_size=32, window=1, horizon=1, epochs = 1):
         train_data = train_data.to(self.device)
         val_data = train_data
+        exo_var = exo_var.to(self.device) if exo_var is not None else None
 
             
         self.train()
@@ -143,19 +144,20 @@ class SGGTM(nn.Module):
             horizon = self.horizon
         
         steps = shape[1]
+        exo_var = exo_var.to(self.device) if exo_var is not None else None
         
         input_shape = (num_timeseries, window, self.input_size)
-        exo_shape = (num_timeseries, window, exo_var.shape[-1])
+        exo_shape = (num_timeseries, window, exo_var.shape[-1]) if exo_var is not None else self.input_size
         
-        exo = torch.ones(exo_shape)
+        exo = torch.rand(exo_shape) if exo_var is not None else None
         
-        mu, sigma, pi = self(torch.zeros(input_shape), exo)
+        mu, sigma, pi = self(torch.rand(input_shape), exo)
         inputs = GMM.sample(mu, sigma, pi)
         
         output = None
         with tqdm(total=steps//horizon) as pbar:
             for i in range(steps//horizon):
-                mu, sigma, pi = self(inputs, exo_var[:, i:window + i])
+                mu, sigma, pi = self(inputs, exo_var[:, i:window + i] if exo_var is not None else None)
                 
                 pred = GMM.sample(mu, sigma, pi).to(self.device)
                 

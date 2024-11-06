@@ -29,11 +29,10 @@ def split_data(name, dataset, window):
     
     
 def get_dataset(name='Synth', dataset=None, window=1):
-    match(name):
-        case 'Synth':
-            train = get_Synth()
-        case _:
-            train = split_data(name, dataset, window=window)
+    if name == "Synth":
+        train = get_Synth()
+    else:
+        train = split_data(name, dataset, window=window)
         
     val = train
     test = train

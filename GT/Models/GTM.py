@@ -36,6 +36,7 @@ class GTM(nn.Module):
     def train_step(self, train_data, exo_var=None, batch_size=1, window=1, horizon=1, epochs = 1):
         train_data = train_data.to(self.device)
         val_data = train_data
+        exo_var = exo_var.to(self.device) if exo_var is not None else None
         if exo_var is not None:
             train_data = torch.cat([exo_var, train_data], dim=-1)
             
@@ -113,9 +114,10 @@ class GTM(nn.Module):
         if horizon is None:
             horizon = self.horizon
         
+        exo_var = exo_var.to(self.device) if exo_var is not None else None
         input_shape = (num_timeseries, window, self.input_size + exo_var.shape[-1] if exo_var is not None else self.input_size)
         
-        mu, sigma, pi = self(torch.rand(input_shape))
+        mu, sigma, pi = self(torch.rand(input_shape).to(self.device))
         inputs = GMM.sample(mu, sigma, pi)
        
         output = None

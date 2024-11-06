@@ -1,10 +1,11 @@
 dataset:
   name: Synthetic
   seq_length: 63
-  batch_size: 83
-  max_length: 31374
+  batch_size: 13
+  max_length: 3276
   mixture_dim: 6
   sample_len: 21
   window: 15
   horizon: 1
+  emb_size: 3
   sequence_index: 

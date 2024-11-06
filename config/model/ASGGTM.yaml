@@ -1,5 +1,5 @@
 model:
-  name: GGTM
+  name: ASGGTM
   hparams:
     hidden_size: 64
     num_layers: 1
@@ -14,3 +14,4 @@ model:
   training:
     epochs: 300
     patience: 50
+  device: cuda

@@ -19,9 +19,7 @@ from sklearn.gaussian_process.kernels import RBF
 MODELS_PATH = f'./models'
 GEN_PATH = f'./Datasets/GeneratedDatasets/'
 IMAGES_PATH = f'./PNG'
-DEVICE = 'cuda:1' if torch.cuda.is_available() else 'cpu'
-torch.set_default_device(DEVICE)
-
+DEVICE = 'cpu'
 
 def datetime_encoded(index, units) -> pd.DataFrame:
         r"""Transform dataset's temporal index into covariates using sinusoidal
@@ -78,7 +76,7 @@ def filter_model_args(model_str, model_kwargs, cfg: DictConfig):
 
 def get_dataset_(dataset_name: str, cfg: DictConfig):
     if dataset_name.startswith('air'):
-        max_size = cfg.dataset.max_lengths
+        max_size = cfg.dataset.max_length
         data = AirQuality(impute_nans=True, small=True)
         if cfg.model.graph:
             adj = data.get_connectivity(**cfg.dataset.connectivity)
@@ -153,13 +151,13 @@ def get_dataset_(dataset_name: str, cfg: DictConfig):
 
 
 def get_new_exo_var(dataset_name: str, max_length: int, num_samples: int):
-    if dataset_name.startswith('air'):
+    if dataset_name.lower().startswith('air'):
         data = AirQuality(impute_nans=True, small=True).dataframe()[:max_length]
         period = 191 * num_samples
         exo_var = pd.date_range(data.index.max() + pd.Timedelta(1, 'Hour'), freq=pd.Timedelta(1, 'Hour'), periods=period)
         exo_var = torch.tensor(datetime_encoded(exo_var, 'hour').values).reshape(num_samples, 191, 2)
         return exo_var.to(DEVICE)
-    elif dataset_name.startswith('exchange'):
+    elif dataset_name.lower().startswith('exchange'):
         data = ExchangeBenchmark().dataframe()[:max_length]
         period = 236 * num_samples
         exo_var = pd.date_range(data.index.max() + pd.Timedelta(1, 'day'), freq='D', periods=period)
@@ -186,15 +184,15 @@ def train(model, dataset, exo_var, cfg: DictConfig):
         model, history = model.train_step(dataset, exo_var, batch_size=cfg.dataset.batch_size, window=cfg.dataset.window, horizon=cfg.dataset.horizon, epochs=cfg.model.training.epochs)
         save_model(model, cfg, history)     
     elif cfg.model.name.lower() == 'dgan':
-        model.train_numpy(np.array(dataset))
+        model.train_numpy(np.array(dataset.cpu()))
         save_model(model, cfg)     
     elif cfg.model.name.lower() == 'par':
         model.fit(data=dataset, segment_size=cfg.dataset.sample_len, entity_columns=['TS'], sequence_index=cfg.dataset.sequence_index)
         save_model(model, cfg)     
     elif cfg.model.name.lower() == 'gaussianregressor':
         train = dataset.reshape(dataset.shape[0]*dataset.shape[1], dataset.shape[2])
-        val = train[1:]
-        train = train[:-1]
+        val = train[1:].to('cpu')
+        train = train[:-1].to('cpu')
         print('Gaussian Regressor Training Start.')
         model.fit(train, val)
         print('Gaussian Regressor Training End.')
@@ -242,12 +240,13 @@ def generate(model, dataset, num_samples, cfg):
         generated_data = model.generate_step(shape=input_shape, exo_var=exo_var, window=cfg.dataset.window, horizon=cfg.dataset.horizon)
     elif cfg.model.name.lower().endswith('par'):
         generated_data = model.sample(num_entities = num_samples * (cfg.dataset.seq_length//cfg.dataset.sample_len))
-        generated_data = torch.Tensor(generated_data.values).reshape(num_samples, cfg.dataset.seq_length, dataset.shape[1])[..., 1:]
+        generated_data = torch.Tensor(generated_data.values)
+        generated_data = generated_data.reshape(generated_data.shape[0]//cfg.dataset.seq_length, cfg.dataset.seq_length, dataset.shape[1]-1)[..., 1:]
     elif cfg.model.name.lower().endswith('dgan'):
         generated_data = torch.Tensor(model.generate_numpy(num_samples)[1])
     elif cfg.model.name.lower().endswith('gaussianregressor'):
         y = dataset.reshape(dataset.shape[0]*dataset.shape[1], dataset.shape[2])[-num_samples*dataset.shape[1]:]
-        generated_data = torch.Tensor(model.sample_y(y, n_samples=1).reshape(num_samples, dataset.shape[1], dataset.shape[2]))
+        generated_data = torch.Tensor(model.sample_y(y, n_samples=1).reshape(dataset.shape[0], dataset.shape[1], dataset.shape[2]))
     return generated_data
     
 def run_imputation(cfg: DictConfig):
@@ -278,14 +277,18 @@ def run_imputation(cfg: DictConfig):
                         output_size=output_size,
                         exo_size=exo_size,
                         mixture_dim=cfg.dataset.mixture_dim,
-                        device=DEVICE)
+                        device=cfg.model.device)
     
     if cfg.model.graph:
-        model_kwargs['edge_index'] = edge_index
+        model_kwargs['edge_index'] = edge_index      
         model_kwargs['edge_weight']  = edge_weight
+
+    if cfg.model.embedding:
+        model_kwargs['emb_size'] = cfg.dataset.emb_size
 
 
     model_cls = get_model_class(MODEL_NAME.lower())
+    
     
     model_kwargs = filter_model_args(MODEL_NAME.lower(), model_kwargs, cfg)
     
@@ -294,7 +297,7 @@ def run_imputation(cfg: DictConfig):
     ########################################
     # training                             #
     ########################################
-    train(model, dataset, exo_var, cfg)
+    # train(model, dataset, exo_var, cfg)
 
     ########################################
     # testing                              #
@@ -308,6 +311,6 @@ def run_imputation(cfg: DictConfig):
     # return res
     
 if __name__ == '__main__':
-    exp = Experiment(run_fn=run_imputation, config_path='/Users/paulmagos/Documents/TSGen/config/', config_name='config.yaml')
+    exp = Experiment(run_fn=run_imputation, config_path='/data/p.magos/TSGen/config/', config_name='config.yaml')
     res = exp.run()
     # logger.info(res)

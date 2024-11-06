@@ -1,0 +1,33 @@
+dataset:
+  dataset:
+    name: AirQuality
+    max_length: 8736
+    connectivity:
+      method: distance
+      threshold: 0.1
+      include_self: false
+      layout: edge_index
+    sequence_index: Date
+    seq_length: 168
+    mixture_dim: 36
+    sample_len: 24
+    batch_size: 13
+    emb_size: 10
+    window: 23
+    horizon: 1
+model:
+  model:
+    name: PAR
+    hparams:
+      epochs: 100
+      cuda: true
+    graph: false
+    embedding: false
+    training:
+      entity_column: TS
+    device: cpu
+seed: 42
+run:
+  seed: 42
+  dir: /data/p.magos/TSGen/outputs/2024-11-06/14-27-08
+  name: 2024-11-06_14-27-08_42

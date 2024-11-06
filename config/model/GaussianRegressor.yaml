@@ -5,4 +5,5 @@ model:
     length_scale: 10.0
   graph: False
   embedding: False
+  device: cpu
   
