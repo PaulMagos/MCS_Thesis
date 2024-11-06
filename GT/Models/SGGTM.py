@@ -69,6 +69,7 @@ class SGGTM(nn.Module):
     def train_step(self, train_data, exo_var=None, batch_size=32, window=1, horizon=1, epochs = 1):
         train_data = train_data.to(self.device)
         val_data = train_data
+        exo_var = exo_var.to(self.device) if exo_var is not None else None
 
             
         self.train()
@@ -143,19 +144,20 @@ class SGGTM(nn.Module):
             horizon = self.horizon
         
         steps = shape[1]
+        exo_var = exo_var.to(self.device) if exo_var is not None else None
         
         input_shape = (num_timeseries, window, self.input_size)
-        exo_shape = (num_timeseries, window, exo_var.shape[-1])
+        exo_shape = (num_timeseries, window, exo_var.shape[-1]) if exo_var is not None else self.input_size
         
-        exo = torch.ones(exo_shape)
+        exo = torch.rand(exo_shape) if exo_var is not None else None
         
-        mu, sigma, pi = self(torch.zeros(input_shape), exo)
+        mu, sigma, pi = self(torch.rand(input_shape), exo)
         inputs = GMM.sample(mu, sigma, pi)
         
         output = None
         with tqdm(total=steps//horizon) as pbar:
             for i in range(steps//horizon):
-                mu, sigma, pi = self(inputs, exo_var[:, i:window + i])
+                mu, sigma, pi = self(inputs, exo_var[:, i:window + i] if exo_var is not None else None)
                 
                 pred = GMM.sample(mu, sigma, pi).to(self.device)
                 

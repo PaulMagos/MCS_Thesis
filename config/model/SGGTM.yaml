@@ -15,3 +15,4 @@ model:
     epochs: 300
     patience: 50
     batch_size: 1
+  device: cuda

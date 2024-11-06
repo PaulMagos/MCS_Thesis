@@ -69,6 +69,7 @@ class GGTM(nn.Module):
         
         self.horizon = horizon
         self.window = window
+        exo_var = exo_var.to(self.device) if exo_var is not None else None
         
         for epoch in range(1, epochs + 1):
             losses_epoch = []
@@ -134,18 +135,19 @@ class GGTM(nn.Module):
         
         steps = shape[1]
         
+        exo_var = exo_var.to(self.device) if exo_var is not None else None
         input_shape = (num_timeseries, window, self.input_size)
-        exo_shape = (num_timeseries, window, exo_var.shape[-1])
+        exo_shape = (num_timeseries, window, exo_var.shape[-1]) if exo_var is not None else self.input_size
         
-        exo = torch.rand(exo_shape)
+        exo = torch.rand(exo_shape) if exo_var is not None else None
         
-        mu, sigma, pi = self(torch.rand(input_shape), exo)
+        mu, sigma, pi = self(torch.rand(input_shape).to(self.device), exo)
         inputs = GMM.sample(mu, sigma, pi)
         
         output = None
         with tqdm(total=steps//horizon) as pbar:
             for i in range(steps//horizon):
-                mu, sigma, pi = self(inputs, exo_var[:, i:window + i])
+                mu, sigma, pi = self(inputs, exo_var[:, i:window + i] if exo_var is not None else None)
                 
                 pred = GMM.sample(mu, sigma, pi).to(self.device)
                 
