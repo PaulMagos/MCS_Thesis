@@ -10,7 +10,7 @@ dataset:
   seq_length: 168
   mixture_dim: 36
   sample_len: 24
-  batch_size: 13
+  batch_size: 1
   emb_size: 10
   window: 23
   horizon: 1

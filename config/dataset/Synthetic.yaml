@@ -1,7 +1,7 @@
 dataset:
   name: Synthetic
   seq_length: 63
-  batch_size: 13
+  batch_size: 1
   max_length: 3276
   mixture_dim: 6
   sample_len: 21

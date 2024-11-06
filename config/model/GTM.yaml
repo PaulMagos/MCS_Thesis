@@ -11,7 +11,7 @@ model:
   graph: False
   embedding: False
   training:
-    epochs: 300
+    epochs: 100
     patience: 50
     batch_size: 1
   device: cuda

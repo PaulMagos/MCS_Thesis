@@ -297,7 +297,10 @@ def run_imputation(cfg: DictConfig):
     ########################################
     # training                             #
     ########################################
-    # train(model, dataset, exo_var, cfg)
+    
+    model, history = load_model(model, cfg)
+    
+    train(model, dataset, exo_var, cfg)
 
     ########################################
     # testing                              #
