@@ -181,7 +181,7 @@ def check_path_existance(MODELS_PATH, GEN_PATH, DATASET_NAME, IMAGES_PATH):
 
 def train(model, dataset, exo_var, cfg: DictConfig):
     if cfg.model.name.lower().endswith('gtm'):
-        model, history = model.train_step(dataset, exo_var, batch_size=cfg.dataset.batch_size, window=cfg.dataset.window, horizon=cfg.dataset.horizon, epochs=cfg.model.training.epochs)
+        model, history = model.train_step(dataset, exo_var, batch_size=cfg.dataset.batch_size, epochs=cfg.model.training.epochs)
         save_model(model, cfg, history)     
     elif cfg.model.name.lower() == 'dgan':
         model.train_numpy(np.array(dataset.cpu()))
@@ -237,7 +237,7 @@ def generate(model, dataset, num_samples, cfg):
     if cfg.model.name.lower().endswith('gtm'):
         exo_var = get_new_exo_var(cfg.dataset.name, cfg.dataset.max_length, num_samples)
         input_shape = (num_samples, cfg.dataset.seq_length)
-        generated_data = model.generate_step(shape=input_shape, exo_var=exo_var, window=cfg.dataset.window, horizon=cfg.dataset.horizon)
+        generated_data = model.generate_step(shape=input_shape, exo_var=exo_var)
     elif cfg.model.name.lower().endswith('par'):
         generated_data = model.sample(num_entities = num_samples * (cfg.dataset.seq_length//cfg.dataset.sample_len))
         generated_data = torch.Tensor(generated_data.values)
@@ -277,7 +277,9 @@ def run_imputation(cfg: DictConfig):
                         output_size=output_size,
                         exo_size=exo_size,
                         mixture_dim=cfg.dataset.mixture_dim,
-                        device=cfg.model.device)
+                        device=cfg.model.device,
+                        window=cfg.dataset.window, 
+                        horizon=cfg.dataset.horizon)
     
     if cfg.model.graph:
         model_kwargs['edge_index'] = edge_index      
@@ -297,8 +299,6 @@ def run_imputation(cfg: DictConfig):
     ########################################
     # training                             #
     ########################################
-    
-    model, history = load_model(model, cfg)
     
     train(model, dataset, exo_var, cfg)
 

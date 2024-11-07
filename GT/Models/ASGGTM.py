@@ -13,10 +13,10 @@ from vector_vis_graph import WeightMethod, horizontal_vvg, natural_vvg
 __all__ = ['ASGGTM']
 
 class ASGGTM(nn.Module):
-    def __init__(self, input_size, output_size, hidden_size, mixture_dim, dropout, num_layers, bidirectional, lr, weight_decay, callbacks, device, emb_size, exo_size=0) -> None:
+    def __init__(self, input_size, output_size, hidden_size, mixture_dim, window, horizon, dropout, num_layers, bidirectional, lr, weight_decay, callbacks, device, emb_size, exo_size=0) -> None:
         super(ASGGTM, self).__init__()
         self.tempo_diff_conv = DiffConv(input_size+exo_size, hidden_size, 2, root_weight=False).to(device)
-        self.spatio_diff_conv = DiffConv(1, 1, 2, root_weight=False).to(device)
+        self.spatio_diff_conv = DiffConv(window, window, 2, root_weight=False).to(device)
         self.N1 = nn.Parameter(torch.randn(input_size, emb_size).to(device), requires_grad = True).to(device)
         self.N2 = nn.Parameter(torch.randn(emb_size, input_size).to(device), requires_grad = True).to(device)
         # LSTM Layer
@@ -31,15 +31,15 @@ class ASGGTM(nn.Module):
             self.callbacks['EarlyStopping'] = EarlyStopping()
             
         self.input_size = input_size
-        self.horizon = 1
-        self.window = 1
+        self.horizon = horizon
+        self.window = window
     
     def get_adj(self, ts):
         nvvg_adj = torch.tensor(natural_vvg(torch.tensor(ts).cpu().numpy(), weight_method=WeightMethod.TIME_DIFF_EUCLIDEAN_DISTANCE, directed=True))
         edge_index, edge_weights = adj_to_edge_index(nvvg_adj)
         return edge_index.to(self.device), edge_weights.float().to(self.device)
                 
-    def forward(self, x, exo_var=None):
+    def forward(self, x, exo_var=None, temporal_edge_i=None, temporal_edge_w=None):
         if exo_var is not None:
             x_in = torch.cat([exo_var, x], dim=-1).to(self.device)
         else:                                                                                                                                                                                                                                     
@@ -48,19 +48,14 @@ class ASGGTM(nn.Module):
         diff_tempo = torch.Tensor().to(self.device)
         
         for i in range(len(x)):
-            edge_i, edge_w = self.get_adj(x[i])
+            edge_i, edge_w = self.get_adj(x[i]) if temporal_edge_i is None else (temporal_edge_i[i], temporal_edge_w[i])
             res = self.tempo_diff_conv(x_in[i], edge_i, edge_w).unsqueeze(0).to(self.device)
             diff_tempo = torch.cat([diff_tempo, res], dim=0)
             
         adp = F.softmax(F.relu(torch.mm(self.N1, self.N2)), dim=1).to(self.device)
-        
         spatio_edge_index, spatio_edge_weight = adj_to_edge_index(adp)
-            
+        diff_spatio = self.spatio_diff_conv(x_in.permute(0, 2, 1), spatio_edge_index, spatio_edge_weight).permute(0, 2, 1).to(self.device)
         
-        diff_spatio = torch.Tensor().to(self.device)
-        for step in range(x.shape[1]):
-            res = self.spatio_diff_conv(x_in[:, step:step+1].permute(0, 2, 1), spatio_edge_index, spatio_edge_weight).permute(0, 2, 1)
-            diff_spatio = torch.cat([diff_spatio, res], dim=1)
         x_in = torch.cat([diff_tempo, diff_spatio, x_in], dim=-1)
         
         out = self.lstm(x_in)[0]
@@ -68,63 +63,62 @@ class ASGGTM(nn.Module):
         gmm = self.gmm(out)
         return gmm
 
-    def train_step(self, train_data, exo_var=None, batch_size=32, window=1, horizon=1, epochs = 1):
-        train_data = train_data.to(self.device)
-        val_data = train_data
-
+    def train_step(self, train_data, exo_var=None, batch_size=32, epochs = 1):
+        train_data, val_data, exo_var = self.parse_data(train_data, exo_var)
             
         self.train()
         print("Starting training...")
         history = {'loss': []}
-        windows = (train_data.shape[1]-horizon) // window
         batches = len(train_data)
         
-        self.horizon = horizon
-        self.window = window
-        exo_var = exo_var.to(self.device) if exo_var is not None else None
+        edge_index, edge_weights = [], []
+        for i in range(batches):
+            edge_i, edge_w = self.get_adj(train_data[i])
+            edge_index.append(edge_i)
+            edge_weights.append(edge_w)
         
         for epoch in range(1, epochs + 1):
             losses_epoch = []
             
             with tqdm(total=batches) as pbar:
                 for batch in range(0, batches, batch_size):
-                    for i in range(windows):
-                        batch_idx = i
-                        
-                        inputs = train_data[batch:batch+batch_size, batch_idx:batch_idx+window, :]
-                        check = val_data[batch:batch+batch_size, batch_idx+horizon:batch_idx+window+horizon, :]
-                        exo = exo_var[batch:batch+batch_size, batch_idx:batch_idx+window] if exo_var is not None else None
-                        
-                        mu, sigma, pi = self(inputs, exo)
-                        loss = self.loss(check, mu, sigma, pi)
-                        self.optimizer.zero_grad()
-                        loss.backward()
-                        self.optimizer.step()
-                        losses_epoch.append(loss.item())
-                        mean_loss = np.mean(losses_epoch)
+                    inputs = train_data[batch:batch+batch_size]
+                    check = val_data[batch:batch+batch_size]
+                    exo = exo_var[batch:batch+batch_size] if exo_var is not None else None
+                    
+                    mu, sigma, pi = self(inputs, exo, edge_index[batch:batch+batch_size], edge_weights[batch:batch+batch_size])
+                    loss = self.loss(check, mu, sigma, pi)
+                    self.optimizer.zero_grad()
+                    loss.backward()
+                    self.optimizer.step()
+                    losses_epoch.append(loss.item())
+                    mean_loss = np.mean(losses_epoch)
                     pbar.set_description(f"Loss {mean_loss}")
                     pbar.update(batch_size)
 
             mean_loss = np.mean(losses_epoch)
             history['loss'].append(mean_loss)
             print(f'Epoch {epoch} - loss:', mean_loss)
-            if self.callbacks['EarlyStopping'](self, mean_loss):
-                print(f'Early Stopped at epoch {epoch} with loss {mean_loss}')
+            stop, min_loss = self.callbacks['EarlyStopping'](self, mean_loss)
+            if stop:
+                print(f'Early Stopped at epoch {epoch} with loss {min_loss}')
                 break
         return self, history
 
-    def predict_step(self, data, exo_var=None, start = 0, steps = 7, window=23):
+    def predict_step(self, data, exo_var=None, start = 0, steps = 7):
         M = self.gmm.M
         D = data.shape[-1]
         self.eval()
         output = torch.Tensor().to(self.device)
         data = data.to(self.device)
         
+        window = self.window
+        
         with tqdm(total=steps) as pbar:
             for i in range(start, start+steps):
                 inputs = data[:, i-window if i>window else 0:i+1]
                 
-                mu, sigma, pi = self(inputs, exo_var[:, i-window if i>window else 0:i+1])
+                mu, sigma, pi = self(inputs, exo_var[:, i-window if i>window else 0:i+1] if exo_var is not None else None)
                 
                 pred = GMM.sample(mu, sigma, pi).to(self.device)
                 
@@ -133,17 +127,15 @@ class ASGGTM(nn.Module):
         
         return np.array(output.cpu().detach())
 
-    def generate_step(self, shape: tuple, exo_var=None, window=None, horizon=None):
+    def generate_step(self, shape: tuple, exo_var=None):
         self.eval()
         
         num_timeseries = shape[0]
         
         shape = shape
         
-        if window is None:
-            window = self.window
-        if horizon is None:
-            horizon = self.horizon
+        window = self.window
+        horizon = self.horizon
         exo_var = exo_var.to(self.device) if exo_var is not None else None
         
         steps = shape[1]
@@ -167,3 +159,29 @@ class ASGGTM(nn.Module):
                 inputs = pred[:, -window:]
                 pbar.update(1)
         return np.array(output.cpu().detach())
+
+    def parse_data(self, train_data, exo_var=None):
+        
+        window = self.window
+        horizon = self.horizon
+        device = self.device
+        train_data = torch.Tensor(train_data)
+        train_data = train_data.reshape(train_data.shape[0]*train_data.shape[1], train_data.shape[2])
+        
+        val_data = torch.Tensor(train_data)
+        
+        
+        max_size = (train_data.shape[0] - horizon) // window
+        val_data = train_data[horizon:(window*max_size)+horizon]
+        train_data = train_data[:len(val_data)]
+        
+        train_data = train_data.reshape(train_data.shape[0]//window, window, train_data.shape[1]).to(device)
+        val_data  = val_data.reshape(val_data.shape[0]//window, window, val_data.shape[1]).to(device)
+    
+        if exo_var is not None:
+            exo_var = torch.Tensor(exo_var)
+            exo_var = exo_var.reshape(exo_var.shape[0]*exo_var.shape[1], exo_var.shape[2])
+            exo_var = exo_var[:window*max_size]
+            exo_var = exo_var.reshape(exo_var.shape[0]//window, window, exo_var.shape[1]).to(device)
+        
+        return train_data, val_data, exo_var

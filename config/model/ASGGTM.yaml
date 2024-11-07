@@ -12,6 +12,6 @@ model:
   embedding: True  
 
   training:
-    epochs: 100
-    patience: 50
+    epochs: 300
+    patience: 3
   device: cuda
