@@ -105,25 +105,29 @@ class ASGGTM(nn.Module):
                 break
         return self, history
 
-    def predict_step(self, data, exo_var=None, start = 0, steps = 7):
+    def predict_step(self, data, mask=None, exo_var=None):
         M = self.gmm.M
         D = data.shape[-1]
         self.eval()
-        output = torch.Tensor().to(self.device)
         data = data.to(self.device)
+        exo_var = exo_var.to(self.device) if exo_var is not None else None
+        mask = mask.to(self.device) if mask is not None else None
         
         window = self.window
+        horizon = self.horizon
+        output = data[:, :window]
         
-        with tqdm(total=steps) as pbar:
-            for i in range(start, start+steps):
-                inputs = data[:, i-window if i>window else 0:i+1]
+        with tqdm(total=data.shape[1]-window) as pbar:
+            for i in range(window, data.shape[1], horizon):
+                inputs = data[:, i-window if i > window else 0:i]
                 
-                mu, sigma, pi = self(inputs, exo_var[:, i-window if i>window else 0:i+1] if exo_var is not None else None)
+                mu, sigma, pi = self(inputs, exo_var[:, i-window if i > window else 0:i] if exo_var is not None else None)
                 
                 pred = GMM.sample(mu, sigma, pi).to(self.device)
-                
-                output = torch.concat([output, pred[:, -1:]], axis=1)
-                pbar.update(1)
+                if mask is not None:
+                    pred[:, -horizon:] = torch.where(mask[:, i:i+horizon]==0., data[:, i:i+horizon], pred[:, -horizon:])
+                output = torch.concat([output, pred[:, -horizon:]], axis=1)
+                pbar.update(horizon)
         
         return np.array(output.cpu().detach())
 
@@ -159,7 +163,7 @@ class ASGGTM(nn.Module):
                 inputs = pred[:, -window:]
                 pbar.update(1)
         return np.array(output.cpu().detach())
-
+    
     def parse_data(self, train_data, exo_var=None):
         
         window = self.window
@@ -178,10 +182,16 @@ class ASGGTM(nn.Module):
         train_data = train_data.reshape(train_data.shape[0]//window, window, train_data.shape[1]).to(device)
         val_data  = val_data.reshape(val_data.shape[0]//window, window, val_data.shape[1]).to(device)
     
+        idx = torch.randperm(train_data.size(0)).to(train_data.device).to(device)
+        train_data = train_data[idx].to(device)
+        val_data  = val_data[idx].to(device)
+    
         if exo_var is not None:
             exo_var = torch.Tensor(exo_var)
             exo_var = exo_var.reshape(exo_var.shape[0]*exo_var.shape[1], exo_var.shape[2])
             exo_var = exo_var[:window*max_size]
             exo_var = exo_var.reshape(exo_var.shape[0]//window, window, exo_var.shape[1]).to(device)
+            exo_var = exo_var[idx]
+
         
         return train_data, val_data, exo_var

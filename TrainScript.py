@@ -160,7 +160,7 @@ def get_new_exo_var(dataset_name: str, max_length: int, num_samples: int):
     elif dataset_name.lower().startswith('exchange'):
         data = ExchangeBenchmark().dataframe()[:max_length]
         period = 236 * num_samples
-        exo_var = pd.date_range(data.index.max() + pd.Timedelta(1, 'day'), freq='D', periods=period)
+        exo_var = pd.date_range(data.index.min() + pd.Timedelta(1, 'day'), freq='D', periods=period)
         exo_var = torch.tensor(datetime_encoded(exo_var, 'day').values).reshape(num_samples, 236, 2)
         return exo_var.to(DEVICE)
     else:
@@ -210,8 +210,7 @@ def save_model(model, cfg, history=None):
         model.save(f'{MODELS_PATH}/{DATASET_NAME}/{MODEL_NAME}_{DATASET_NAME}')
     elif cfg.model.name.lower() == 'par' or cfg.model.name.lower() == 'gaussianregressor':
         with open(f'{MODELS_PATH}/{DATASET_NAME}/{MODEL_NAME}_{DATASET_NAME}','wb') as f:
-            pickle.dump(model,f)
-            
+            pickle.dump(model,f)            
 def load_model(model, cfg):
     DATASET_NAME = cfg.dataset.name
     MODEL_NAME = cfg.model.name
@@ -299,6 +298,7 @@ def run_imputation(cfg: DictConfig):
     ########################################
     # training                             #
     ########################################
+    
     
     train(model, dataset, exo_var, cfg)
 

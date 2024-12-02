@@ -1,7 +1,7 @@
 model:
   name: GTM
   hparams:
-    hidden_size: 32
+    hidden_size: 64
     num_layers: 1
     dropout: 0
     bidirectional: True

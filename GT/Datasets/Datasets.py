@@ -1,6 +1,7 @@
 
 import os
 import numpy as np
+import pickle
 from sklearn.preprocessing import MinMaxScaler
 
 __all__ = ['get_dataset', 'normalize', 'denormalize']
@@ -19,7 +20,8 @@ def split_data(name, dataset, window):
         scaler = MinMaxScaler()
         Train = scaler.fit_transform(Train)
         np.save(f'{base_path}/data/{name}/train.npy', Train)
-        np.save(f'{base_path}/data/{name}/scaler.npy', scaler)
+        with open(f'{base_path}/data/{name}/scaler.npy', 'wb') as f:
+            scaler = pickle.dump(scaler, f)
     else:
         Train = np.load(f'{base_path}/data/{name}/train.npy')
         
@@ -42,9 +44,11 @@ def get_dataset(name='Synth', dataset=None, window=1):
     return train, val, test
 
 def normalize(x, name='Synth'):
-    scaler = np.load(f'{base_path}/data/{name}/scaler.npy')
+    with open(f'{base_path}/data/{name}/scaler.npy', 'rb') as f:
+        scaler = pickle.load(f)
     return scaler.transform(x)
     
 def denormalize(x, name='Synth'):
-    scaler = np.load(f'{base_path}/data/{name}/scaler.npy')
+    with open(f'{base_path}/data/{name}/scaler.npy', 'rb') as f:
+        scaler = pickle.load(f)
     return scaler.inverse_transform(x)

@@ -12,6 +12,6 @@ model:
   embedding: False
     
   training:
-    epochs: 300
+    epochs: 500
     patience: 3
   device: cuda

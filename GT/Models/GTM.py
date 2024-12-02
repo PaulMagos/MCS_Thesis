@@ -68,31 +68,35 @@ class GTM(nn.Module):
                 break
         return self, history
 
-    def predict_step(self, data, exo_var=None, start = 0, steps = 7):
+    def predict_step(self, data, mask=None, exo_var=None):
         M = self.gmm.M
         D = data.shape[-1]
         self.eval()
-        output = torch.Tensor().to(self.device)
         data = data.to(self.device)
+        exo_var = exo_var.to(self.device) if exo_var is not None else None
+        mask = mask.to(self.device) if mask is not None else None
         
         window = self.window
         horizon = self.horizon
-        with tqdm(total=steps) as pbar:
-            for i in range(start, start+steps, horizon):
-                inputs = data[:, i-window if i > window else 0:i+1]
+        output = data[:, :horizon]
+        with tqdm(total=data.shape[1]-horizon) as pbar:
+            for i in range(horizon, data.shape[1], horizon):
+                inputs = data[:, :i]
                 
                 if exo_var is not None:
-                    inputs = torch.cat([exo_var[:, i-window if i > window else 0:i+1], inputs], dim=-1) 
+                    inputs = torch.cat([exo_var[:, :i], inputs], dim=-1) 
                 
                 mu, sigma, pi = self(inputs)
                 
                 pred = GMM.sample(mu, sigma, pi).to(self.device)
+                if mask is not None:
+                    pred[:, -horizon:] = torch.where(mask[:, i:i+horizon]==0., data[:, i:i+horizon], pred[:, -horizon:])
                 
                 output = torch.concat([output, pred[:, -horizon:]], axis=1)
-                pbar.update(1)
+                pbar.update(horizon)
         
         return np.array(output.cpu().detach())
-
+    
     def generate_step(self, shape: tuple, exo_var=None):
         self.eval()
         
