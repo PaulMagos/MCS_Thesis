@@ -1,7 +1,7 @@
 
 __all__ = ['EarlyStopping']
 class EarlyStopping:
-    def __init__(self, patience = 10, min_delta = 1e-3) -> None:
+    def __init__(self, patience = 30, min_delta = 1e-3) -> None:
         self.patience = patience
         self.min_delta = min_delta
         self.counter = 0
@@ -19,5 +19,5 @@ class EarlyStopping:
             self.counter += 1
             if self.counter >= self.patience:
                 model.load_state_dict(self.best_weights)
-                return True
-        return False
+                return True, self.min_validation_loss
+        return False, None

@@ -1,0 +1,4 @@
+seed: 42
+defaults:
+  - dataset: AirQuality
+  - model: GTM

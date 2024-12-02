@@ -1,0 +1,8 @@
+model:
+  name: DGAN
+  hparams:
+    epochs: 100
+    apply_feature_scaling: False
+  graph: False
+  embedding: False
+  device: cpu

@@ -1,0 +1,10 @@
+model:
+  name: PAR
+  hparams:
+    epochs: 100
+    cuda: True
+  graph: False
+  embedding: False
+  training: 
+    entity_column: TS
+  device: cpu

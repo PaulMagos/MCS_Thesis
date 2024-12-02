@@ -1,0 +1,9 @@
+model:
+  name: GaussianRegressor
+  hparams:
+    kernel: RBF
+    length_scale: 10.0
+  graph: False
+  embedding: False
+  device: cpu
+  
